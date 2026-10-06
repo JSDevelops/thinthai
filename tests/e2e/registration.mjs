@@ -1,17 +1,112 @@
-import {chromium} from 'playwright';
-import {readFile,mkdir} from 'node:fs/promises';
-import {randomUUID,randomBytes} from 'node:crypto';
+import { chromium } from 'playwright';
+import { readFile, mkdir } from 'node:fs/promises';
+import { randomUUID, randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
-import {config} from 'dotenv';
+import { config } from 'dotenv';
 import pg from 'pg';
-config({quiet:true});const url=new URL(process.env.DATABASE_URL);if(url.hostname!=='127.0.0.1'||url.port!=='55433'||url.pathname!=='/thinthai_dev')throw Error('Local dev only');
-const db=new pg.Pool({connectionString:url.href});const credentials=await readFile('.local/dev-accounts.md','utf8');const [,,adminEmail,adminPassword]=credentials.split('\n').find(s=>s.startsWith('| ADMIN |')).split('|').map(s=>s.trim());
-const email='registration-'+randomUUID()+'@example.test',password=randomBytes(18).toString('base64url'),name='ร้านทดสอบลงทะเบียน '+randomUUID().slice(0,8);const browser=await chromium.launch({headless:true,channel:'chrome'});
-try{await mkdir('design/previews/registration',{recursive:true});const user=await browser.newPage({viewport:{width:390,height:844}});const admin=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];for(const page of [user,admin])page.on('pageerror',e=>errors.push(e.message));
-await user.goto('http://127.0.0.1:3200/workspace');await user.getByRole('button',{name:'ยังไม่มีบัญชี สมัครสมาชิก'}).click();await user.getByLabel('ชื่อที่แสดง').fill('ผู้สมัครทดสอบ');await user.getByLabel('อีเมล',{exact:true}).fill(email);await user.getByLabel('รหัสผ่าน',{exact:true}).fill(password);await user.getByLabel('ยืนยันรหัสผ่าน').fill(password+'x');await user.getByRole('button',{name:'สมัครสมาชิก',exact:true}).click();await user.getByRole('alert').filter({hasText:'รหัสผ่านทั้งสองช่องไม่ตรงกัน'}).waitFor();await user.getByLabel('ยืนยันรหัสผ่าน').fill(password);await user.screenshot({path:'design/previews/registration/mobile-signup.png',fullPage:true});await user.getByRole('button',{name:'สมัครสมาชิก',exact:true}).click();await user.getByRole('button',{name:'สมัครผู้ประกอบการ',exact:true}).click();await user.getByRole('button',{name:'ยื่นคำขอเปิดร้าน'}).click();
-const form=user.locator('.application-form');await form.getByLabel('ชื่อร้าน',{exact:true}).fill(name);await form.getByLabel('จังหวัด',{exact:true}).selectOption('50');await form.getByLabel('อำเภอ / เขต',{exact:true}).selectOption('5001');await form.getByLabel('ตำบล / แขวง',{exact:true}).selectOption('500107');await form.getByLabel('เบอร์ติดต่อ').fill('0812345678');await form.getByLabel('ที่อยู่ร้าน').fill('123 ที่อยู่สำหรับทดสอบระบบ');
-for(const [label,width,height] of [['mobile',390,844],['tablet',820,1180],['desktop',1440,1000]]){await user.setViewportSize({width,height});assert.equal(await user.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await user.screenshot({path:`design/previews/registration/${label}-application.png`,fullPage:true});}
-await form.getByRole('button',{name:'บันทึกฉบับร่าง'}).click();await user.getByRole('button',{name:'ส่งตรวจ',exact:true}).click();await user.locator('.badge').filter({hasText:'รอตรวจ'}).waitFor();await user.reload();await user.getByRole('button',{name:'สมัครผู้ประกอบการ',exact:true}).click();await user.locator('.badge').filter({hasText:'รอตรวจ'}).waitFor();
-await admin.goto('http://127.0.0.1:3200/workspace');await admin.getByLabel('อีเมล',{exact:true}).fill(adminEmail);await admin.getByLabel('รหัสผ่าน',{exact:true}).fill(adminPassword);await admin.getByRole('button',{name:'เข้าสู่ระบบ',exact:true}).click();await admin.getByRole('button',{name:'ตรวจคำขอเปิดร้าน',exact:true}).click();const card=admin.locator('.application-card').filter({has:admin.getByRole('heading',{name,exact:true})});await card.getByRole('button',{name:'ตรวจคำขอ',exact:true}).click();await admin.getByLabel('ผลการตรวจ').selectOption('approved');await admin.getByLabel('เหตุผล',{exact:true}).fill('ตรวจข้อมูลตัวอย่างครบแล้ว');await admin.screenshot({path:'design/previews/registration/desktop-review.png',fullPage:true});await admin.getByRole('button',{name:'ยืนยันผลตรวจ'}).click();await card.locator('.badge').filter({hasText:'อนุมัติ'}).waitFor();
-await user.getByRole('button',{name:'โหลดข้อมูลล่าสุด'}).click();await user.getByRole('button',{name:'อัปเดตสิทธิ์เพื่อจัดการร้าน'}).click();await user.locator('.account-bar .badge').filter({hasText:'MERCHANT'}).waitFor();await user.getByRole('button',{name:'ร้านค้า',exact:true}).click();await user.getByRole('heading',{name,exact:true}).waitFor();assert.deepEqual(errors,[]);console.log('Registration validation / responsive application / submit / review / approval / merchant rights passed');
-}finally{await browser.close();const u=(await db.query('SELECT id FROM app_users WHERE email=$1',[email])).rows[0];if(u){const stores=(await db.query('SELECT store_id FROM merchant_applications WHERE applicant_id=$1 AND store_id IS NOT NULL',[u.id])).rows.map(s=>s.store_id);await db.query('DELETE FROM merchant_applications WHERE applicant_id=$1',[u.id]);await db.query('DELETE FROM store_memberships WHERE user_id=$1',[u.id]);if(stores.length)await db.query('DELETE FROM stores WHERE id=ANY($1::uuid[])',[stores]);await db.query('DELETE FROM audit_events WHERE actor_id=$1',[u.id]);await db.query('DELETE FROM app_users WHERE id=$1',[u.id]);}await db.end();}
+config({ quiet: true });
+const url = new URL(process.env.DATABASE_URL);
+if (url.hostname !== '127.0.0.1' || url.port !== '55433' || url.pathname !== '/thinthai_dev')
+  throw Error('Local dev only');
+const db = new pg.Pool({ connectionString: url.href });
+const credentials = await readFile('.local/dev-accounts.md', 'utf8');
+const [, , adminEmail, adminPassword] = credentials
+  .split('\n')
+  .find((s) => s.startsWith('| ADMIN |'))
+  .split('|')
+  .map((s) => s.trim());
+const email = 'registration-' + randomUUID() + '@example.test',
+  password = randomBytes(18).toString('base64url'),
+  name = 'ร้านทดสอบลงทะเบียน ' + randomUUID().slice(0, 8);
+const browser = await chromium.launch({ headless: true, channel: 'chrome' });
+try {
+  await mkdir('design/previews/registration', { recursive: true });
+  const user = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const admin = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors = [];
+  for (const page of [user, admin]) page.on('pageerror', (e) => errors.push(e.message));
+  await user.goto('http://127.0.0.1:3200/workspace');
+  await user.getByRole('button', { name: 'ยังไม่มีบัญชี สมัครสมาชิก' }).click();
+  await user.getByLabel('ชื่อที่แสดง').fill('ผู้สมัครทดสอบ');
+  await user.getByLabel('อีเมล', { exact: true }).fill(email);
+  await user.getByLabel('รหัสผ่าน', { exact: true }).fill(password);
+  await user.getByLabel('ยืนยันรหัสผ่าน').fill(password + 'x');
+  await user.getByRole('button', { name: 'สมัครสมาชิก', exact: true }).click();
+  await user.getByRole('alert').filter({ hasText: 'รหัสผ่านทั้งสองช่องไม่ตรงกัน' }).waitFor();
+  await user.getByLabel('ยืนยันรหัสผ่าน').fill(password);
+  await user.screenshot({ path: 'design/previews/registration/mobile-signup.png', fullPage: true });
+  await user.getByRole('button', { name: 'สมัครสมาชิก', exact: true }).click();
+  await user.getByRole('button', { name: 'สมัครผู้ประกอบการ', exact: true }).click();
+  await user.getByRole('button', { name: 'ยื่นคำขอเปิดร้าน' }).click();
+  const form = user.locator('.application-form');
+  await form.getByLabel('ชื่อร้าน', { exact: true }).fill(name);
+  await form.getByLabel('จังหวัด', { exact: true }).selectOption('50');
+  await form.getByLabel('อำเภอ / เขต', { exact: true }).selectOption('5001');
+  await form.getByLabel('ตำบล / แขวง', { exact: true }).selectOption('500107');
+  await form.getByLabel('เบอร์ติดต่อ').fill('0812345678');
+  await form.getByLabel('ที่อยู่ร้าน').fill('123 ที่อยู่สำหรับทดสอบระบบ');
+  for (const [label, width, height] of [
+    ['mobile', 390, 844],
+    ['tablet', 820, 1180],
+    ['desktop', 1440, 1000],
+  ]) {
+    await user.setViewportSize({ width, height });
+    assert.equal(
+      await user.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
+    await user.screenshot({
+      path: `design/previews/registration/${label}-application.png`,
+      fullPage: true,
+    });
+  }
+  await form.getByRole('button', { name: 'บันทึกฉบับร่าง' }).click();
+  await user.getByRole('button', { name: 'ส่งตรวจ', exact: true }).click();
+  await user.locator('.badge').filter({ hasText: 'รอตรวจ' }).waitFor();
+  await user.reload();
+  await user.getByRole('button', { name: 'สมัครผู้ประกอบการ', exact: true }).click();
+  await user.locator('.badge').filter({ hasText: 'รอตรวจ' }).waitFor();
+  await admin.goto('http://127.0.0.1:3200/workspace');
+  await admin.getByLabel('อีเมล', { exact: true }).fill(adminEmail);
+  await admin.getByLabel('รหัสผ่าน', { exact: true }).fill(adminPassword);
+  await admin.getByRole('button', { name: 'เข้าสู่ระบบ', exact: true }).click();
+  await admin.getByRole('button', { name: 'ตรวจคำขอเปิดร้าน', exact: true }).click();
+  const card = admin
+    .locator('.application-card')
+    .filter({ has: admin.getByRole('heading', { name, exact: true }) });
+  await card.getByRole('button', { name: 'ตรวจคำขอ', exact: true }).click();
+  await admin.getByLabel('ผลการตรวจ').selectOption('approved');
+  await admin.getByLabel('เหตุผล', { exact: true }).fill('ตรวจข้อมูลตัวอย่างครบแล้ว');
+  await admin.screenshot({
+    path: 'design/previews/registration/desktop-review.png',
+    fullPage: true,
+  });
+  await admin.getByRole('button', { name: 'ยืนยันผลตรวจ' }).click();
+  await card.locator('.badge').filter({ hasText: 'อนุมัติ' }).waitFor();
+  await user.getByRole('button', { name: 'โหลดข้อมูลล่าสุด' }).click();
+  await user.getByRole('button', { name: 'อัปเดตสิทธิ์เพื่อจัดการร้าน' }).click();
+  await user.locator('.account-bar .badge').filter({ hasText: 'MERCHANT' }).waitFor();
+  await user.getByRole('button', { name: 'ร้านค้า', exact: true }).click();
+  await user.getByRole('heading', { name, exact: true }).waitFor();
+  assert.deepEqual(errors, []);
+  console.log(
+    'Registration validation / responsive application / submit / review / approval / merchant rights passed',
+  );
+} finally {
+  await browser.close();
+  const u = (await db.query('SELECT id FROM app_users WHERE email=$1', [email])).rows[0];
+  if (u) {
+    const stores = (
+      await db.query(
+        'SELECT store_id FROM merchant_applications WHERE applicant_id=$1 AND store_id IS NOT NULL',
+        [u.id],
+      )
+    ).rows.map((s) => s.store_id);
+    await db.query('DELETE FROM merchant_applications WHERE applicant_id=$1', [u.id]);
+    await db.query('DELETE FROM store_memberships WHERE user_id=$1', [u.id]);
+    if (stores.length) await db.query('DELETE FROM stores WHERE id=ANY($1::uuid[])', [stores]);
+    await db.query('DELETE FROM audit_events WHERE actor_id=$1', [u.id]);
+    await db.query('DELETE FROM app_users WHERE id=$1', [u.id]);
+  }
+  await db.end();
+}

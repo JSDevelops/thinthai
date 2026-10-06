@@ -1,26 +1,246 @@
-import {Inject,Injectable,ForbiddenException,ConflictException,BadRequestException} from '@nestjs/common';
-import {randomUUID,createHash} from 'node:crypto';
-import {z} from 'zod';
-import type {PoolClient} from 'pg';
-import {Db} from './db';
-import {canManage,type Actor} from './access';
-import {coordinates,distanceKm} from './store-input';
-export const checkoutInput=z.object({storeId:z.uuid(),fulfillment:z.enum(['instant_food_delivery','parcel_delivery','pickup']),items:z.array(z.object({productId:z.uuid(),quantity:z.number().int().min(1).max(99),expectedPriceSatang:z.number().int().min(1).max(100000000)}).strict()).min(1).max(20),recipient:z.string().trim().min(1).max(100),phone:z.string().trim().regex(/^\+?[0-9 ()-]{8,20}$/).refine(v=>v.replace(/\D/g,'').length>=8),address:z.string().trim().max(500),point:z.object(coordinates).strict().optional(),requestKey:z.uuid()}).strict().refine(v=>new Set(v.items.map(i=>i.productId)).size===v.items.length,'สินค้าซ้ำ').refine(v=>v.fulfillment==='pickup'||v.address.length>=5,'กรอกที่อยู่').refine(v=>v.fulfillment!=='instant_food_delivery'||!!v.point,'ระบุพิกัด');
-export const orderAction=z.object({version:z.number().int().positive(),action:z.enum(['accept','complete','cancel','reject']),reason:z.string().trim().min(3).max(300)}).strict();
-const select=`SELECT o.id,o.buyer_id AS "buyerId",o.store_id AS "storeId",s.name AS "storeName",o.status,o.fulfillment,o.subtotal_satang::float8 AS "subtotalSatang",o.recipient,o.phone,o.address,o.latitude::float8 AS lat,o.longitude::float8 AS lng,o.version,o.created_at AS "createdAt",COALESCE((SELECT json_agg(json_build_object('productId',i.product_id,'name',i.name,'unitPriceSatang',i.unit_price_satang,'quantity',i.quantity) ORDER BY i.product_id) FROM order_items i WHERE i.order_id=o.id),'[]') AS items,COALESCE((SELECT json_agg(json_build_object('status',h.status,'reason',h.reason,'createdAt',h.created_at) ORDER BY h.created_at,h.id) FROM order_history h WHERE h.order_id=o.id),'[]') AS history FROM orders o JOIN stores s ON s.id=o.store_id JOIN subdistricts t ON t.id=s.subdistrict_id`;
-@Injectable() export class Orders {
- constructor(@Inject(Db) private readonly db:Db){}
- async list(a:Actor,manage:boolean){if(manage&&a.role==='USER')throw new ForbiddenException();return (await this.db.pool.query(`${select} WHERE ${manage?"($1='SUPER_ADMIN' OR ($1='ADMIN' AND t.province_id=ANY($2::text[])) OR ($1='MERCHANT' AND s.id=ANY($3::uuid[])))":"o.buyer_id=$1"} ORDER BY o.created_at DESC LIMIT 100`,manage?[a.role,a.provinceIds,a.storeIds]:[a.id])).rows;}
- private async shop(c:PoolClient,id:string){const s=(await c.query('SELECT s.*,t.province_id AS "provinceId",s.latitude::float8 AS lat,s.longitude::float8 AS lng,s.delivery_radius_km::float8 AS radius FROM stores s JOIN subdistricts t ON t.id=s.subdistrict_id WHERE s.id=$1 FOR UPDATE OF s',[id])).rows[0];if(!s)throw new BadRequestException('ไม่พบร้านค้า');return s;}
- private async stockLog(c:PoolClient,a:Actor,product:any,event:string,delta:number,orderId:string){const after=(await c.query('SELECT id,stock,reserved,version FROM products WHERE id=$1',[product.id])).rows[0];await c.query('INSERT INTO product_history(id,product_id,actor_id,event,reason,delta,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[randomUUID(),product.id,a.id,event,'คำสั่งซื้อ '+orderId,delta,{stock:product.stock,reserved:product.reserved,version:product.version},after]);}
- async checkout(a:Actor,v:z.infer<typeof checkoutInput>){return this.db.transaction(async c=>{const hash=createHash('sha256').update(JSON.stringify({...v,items:[...v.items].sort((x,y)=>x.productId.localeCompare(y.productId))})).digest('hex');await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['checkout:'+a.id+':'+v.requestKey]);const old=(await c.query('SELECT id,request_hash FROM orders WHERE buyer_id=$1 AND request_key=$2',[a.id,v.requestKey])).rows[0];if(old){if(old.request_hash!==hash)throw new ConflictException('รหัสรายการเดิมใช้กับข้อมูลอื่นแล้ว');return (await c.query(`${select} WHERE o.id=$1`,[old.id])).rows[0];}
- const store=await this.shop(c,v.storeId);if(!store.active)throw new ConflictException('ร้านพักใช้งาน');
- if(v.fulfillment==='instant_food_delivery'&&(store.category!=='food'||!store.delivery_enabled||store.lat===null||store.lng===null||store.radius===null||distanceKm({lat:store.lat,lng:store.lng},v.point!)>store.radius))throw new ConflictException('จุดจัดส่งอยู่นอกโซนหรือร้านปิดจัดส่งอาหาร');
- const items=[];let subtotal=0;for(const line of [...v.items].sort((x,y)=>x.productId.localeCompare(y.productId))){const p=(await c.query('SELECT * FROM products WHERE id=$1 AND store_id=$2 FOR UPDATE',[line.productId,v.storeId])).rows[0];if(!p||!p.active||p.stock<line.quantity)throw new ConflictException('สินค้าไม่พร้อมขายหรือจำนวนไม่พอ');if(p.fulfillment!==v.fulfillment||(v.fulfillment==='instant_food_delivery'&&p.category!=='food'))throw new ConflictException('สินค้าในคำสั่งซื้อต้องใช้วิธีรับสินค้าเดียวกัน');if(p.price_satang!==line.expectedPriceSatang)throw new ConflictException('ราคาสินค้าเปลี่ยน กรุณาโหลดสินค้าและตรวจตะกร้าใหม่');subtotal+=p.price_satang*line.quantity;items.push({p,quantity:line.quantity});}
- const id=randomUUID();await c.query('INSERT INTO orders(id,buyer_id,store_id,request_key,request_hash,fulfillment,subtotal_satang,recipient,phone,address,latitude,longitude) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[id,a.id,v.storeId,v.requestKey,hash,v.fulfillment,subtotal,v.recipient,v.phone,v.address,v.point?.lat??null,v.point?.lng??null]);
- for(const {p,quantity} of items){await c.query('INSERT INTO order_items VALUES($1,$2,$3,$4,$5)',[id,p.id,p.name,p.price_satang,quantity]);await c.query('UPDATE products SET stock=stock-$1,reserved=reserved+$1,version=version+1,updated_at=now() WHERE id=$2',[quantity,p.id]);await this.stockLog(c,a,p,'order.reserved',-quantity,id);}
- await c.query("INSERT INTO order_history VALUES($1,$2,$3,'placed','ลูกค้ายืนยันคำสั่งซื้อ',now())",[randomUUID(),id,a.id]);return (await c.query(`${select} WHERE o.id=$1`,[id])).rows[0];});}
- async action(a:Actor,id:string,v:z.infer<typeof orderAction>){return this.db.transaction(async c=>{const ref=(await c.query('SELECT store_id FROM orders WHERE id=$1',[id])).rows[0];if(!ref)throw new ForbiddenException();const store=await this.shop(c,ref.store_id);const order=(await c.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE',[id])).rows[0];if(v.action==='cancel'?order.buyer_id!==a.id:!canManage(a,store))throw new ForbiddenException();if(order.version!==v.version)throw new ConflictException('รายการเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่');const allowed=v.action==='complete'?order.status==='accepted':order.status==='placed';if(!allowed)throw new ConflictException('ไม่สามารถเปลี่ยนสถานะนี้ได้');const status={accept:'accepted',complete:'completed',cancel:'cancelled',reject:'rejected'}[v.action];
- if(v.action!=='accept'){const items=(await c.query('SELECT * FROM order_items WHERE order_id=$1 ORDER BY product_id',[id])).rows;for(const i of items){const p=(await c.query('SELECT id,stock,reserved,version FROM products WHERE id=$1 FOR UPDATE',[i.product_id])).rows[0];const returned=v.action==='complete'?0:i.quantity;await c.query('UPDATE products SET stock=stock+$1,reserved=reserved-$2,version=version+1,updated_at=now() WHERE id=$3',[returned,i.quantity,p.id]);await this.stockLog(c,a,p,'order.'+status,returned,id);}}
- await c.query('UPDATE orders SET status=$1,version=version+1,updated_at=now() WHERE id=$2',[status,id]);await c.query('INSERT INTO order_history VALUES($1,$2,$3,$4,$5,now())',[randomUUID(),id,a.id,status,v.reason]);return (await c.query(`${select} WHERE o.id=$1`,[id])).rows[0];});}
+import {
+  Inject,
+  Injectable,
+  ForbiddenException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
+import { randomUUID, createHash } from 'node:crypto';
+import { z } from 'zod';
+import type { PoolClient } from 'pg';
+import { Db } from './db';
+import { canManage, type Actor } from './access';
+import { coordinates, distanceKm } from './store-input';
+export const checkoutInput = z
+  .object({
+    storeId: z.uuid(),
+    fulfillment: z.enum(['instant_food_delivery', 'parcel_delivery', 'pickup']),
+    items: z
+      .array(
+        z
+          .object({
+            productId: z.uuid(),
+            quantity: z.number().int().min(1).max(99),
+            expectedPriceSatang: z.number().int().min(1).max(100000000),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(20),
+    recipient: z.string().trim().min(1).max(100),
+    phone: z
+      .string()
+      .trim()
+      .regex(/^\+?[0-9 ()-]{8,20}$/)
+      .refine((v) => v.replace(/\D/g, '').length >= 8),
+    address: z.string().trim().max(500),
+    point: z.object(coordinates).strict().optional(),
+    requestKey: z.uuid(),
+  })
+  .strict()
+  .refine((v) => new Set(v.items.map((i) => i.productId)).size === v.items.length, 'สินค้าซ้ำ')
+  .refine((v) => v.fulfillment === 'pickup' || v.address.length >= 5, 'กรอกที่อยู่')
+  .refine((v) => v.fulfillment !== 'instant_food_delivery' || !!v.point, 'ระบุพิกัด');
+export const orderAction = z
+  .object({
+    version: z.number().int().positive(),
+    action: z.enum(['accept', 'complete', 'cancel', 'reject']),
+    reason: z.string().trim().min(3).max(300),
+  })
+  .strict();
+const select = `SELECT o.id,o.buyer_id AS "buyerId",o.store_id AS "storeId",s.name AS "storeName",o.status,o.fulfillment,o.subtotal_satang::float8 AS "subtotalSatang",o.recipient,o.phone,o.address,o.latitude::float8 AS lat,o.longitude::float8 AS lng,o.version,o.created_at AS "createdAt",COALESCE((SELECT json_agg(json_build_object('productId',i.product_id,'name',i.name,'unitPriceSatang',i.unit_price_satang,'quantity',i.quantity) ORDER BY i.product_id) FROM order_items i WHERE i.order_id=o.id),'[]') AS items,COALESCE((SELECT json_agg(json_build_object('status',h.status,'reason',h.reason,'createdAt',h.created_at) ORDER BY h.created_at,h.id) FROM order_history h WHERE h.order_id=o.id),'[]') AS history FROM orders o JOIN stores s ON s.id=o.store_id JOIN subdistricts t ON t.id=s.subdistrict_id`;
+@Injectable()
+export class Orders {
+  constructor(@Inject(Db) private readonly db: Db) {}
+  async list(a: Actor, manage: boolean) {
+    if (manage && a.role === 'USER') throw new ForbiddenException();
+    return (
+      await this.db.pool.query(
+        `${select} WHERE ${manage ? "($1='SUPER_ADMIN' OR ($1='ADMIN' AND t.province_id=ANY($2::text[])) OR ($1='MERCHANT' AND s.id=ANY($3::uuid[])))" : 'o.buyer_id=$1'} ORDER BY o.created_at DESC LIMIT 100`,
+        manage ? [a.role, a.provinceIds, a.storeIds] : [a.id],
+      )
+    ).rows;
+  }
+  private async shop(c: PoolClient, id: string) {
+    const s = (
+      await c.query(
+        'SELECT s.*,t.province_id AS "provinceId",s.latitude::float8 AS lat,s.longitude::float8 AS lng,s.delivery_radius_km::float8 AS radius FROM stores s JOIN subdistricts t ON t.id=s.subdistrict_id WHERE s.id=$1 FOR UPDATE OF s',
+        [id],
+      )
+    ).rows[0];
+    if (!s) throw new BadRequestException('ไม่พบร้านค้า');
+    return s;
+  }
+  private async stockLog(
+    c: PoolClient,
+    a: Actor,
+    product: any,
+    event: string,
+    delta: number,
+    orderId: string,
+  ) {
+    const after = (
+      await c.query('SELECT id,stock,reserved,version FROM products WHERE id=$1', [product.id])
+    ).rows[0];
+    await c.query(
+      'INSERT INTO product_history(id,product_id,actor_id,event,reason,delta,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+      [
+        randomUUID(),
+        product.id,
+        a.id,
+        event,
+        'คำสั่งซื้อ ' + orderId,
+        delta,
+        { stock: product.stock, reserved: product.reserved, version: product.version },
+        after,
+      ],
+    );
+  }
+  async checkout(a: Actor, v: z.infer<typeof checkoutInput>) {
+    return this.db.transaction(async (c) => {
+      const hash = createHash('sha256')
+        .update(
+          JSON.stringify({
+            ...v,
+            items: [...v.items].sort((x, y) => x.productId.localeCompare(y.productId)),
+          }),
+        )
+        .digest('hex');
+      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+        'checkout:' + a.id + ':' + v.requestKey,
+      ]);
+      const old = (
+        await c.query('SELECT id,request_hash FROM orders WHERE buyer_id=$1 AND request_key=$2', [
+          a.id,
+          v.requestKey,
+        ])
+      ).rows[0];
+      if (old) {
+        if (old.request_hash !== hash)
+          throw new ConflictException('รหัสรายการเดิมใช้กับข้อมูลอื่นแล้ว');
+        return (await c.query(`${select} WHERE o.id=$1`, [old.id])).rows[0];
+      }
+      const store = await this.shop(c, v.storeId);
+      if (!store.active) throw new ConflictException('ร้านพักใช้งาน');
+      if (
+        v.fulfillment === 'instant_food_delivery' &&
+        (store.category !== 'food' ||
+          !store.delivery_enabled ||
+          store.lat === null ||
+          store.lng === null ||
+          store.radius === null ||
+          distanceKm({ lat: store.lat, lng: store.lng }, v.point!) > store.radius)
+      )
+        throw new ConflictException('จุดจัดส่งอยู่นอกโซนหรือร้านปิดจัดส่งอาหาร');
+      const items = [];
+      let subtotal = 0;
+      for (const line of [...v.items].sort((x, y) => x.productId.localeCompare(y.productId))) {
+        const p = (
+          await c.query('SELECT * FROM products WHERE id=$1 AND store_id=$2 FOR UPDATE', [
+            line.productId,
+            v.storeId,
+          ])
+        ).rows[0];
+        if (!p || !p.active || p.stock < line.quantity)
+          throw new ConflictException('สินค้าไม่พร้อมขายหรือจำนวนไม่พอ');
+        if (
+          p.fulfillment !== v.fulfillment ||
+          (v.fulfillment === 'instant_food_delivery' && p.category !== 'food')
+        )
+          throw new ConflictException('สินค้าในคำสั่งซื้อต้องใช้วิธีรับสินค้าเดียวกัน');
+        if (p.price_satang !== line.expectedPriceSatang)
+          throw new ConflictException('ราคาสินค้าเปลี่ยน กรุณาโหลดสินค้าและตรวจตะกร้าใหม่');
+        subtotal += p.price_satang * line.quantity;
+        items.push({ p, quantity: line.quantity });
+      }
+      const id = randomUUID();
+      await c.query(
+        'INSERT INTO orders(id,buyer_id,store_id,request_key,request_hash,fulfillment,subtotal_satang,recipient,phone,address,latitude,longitude) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+        [
+          id,
+          a.id,
+          v.storeId,
+          v.requestKey,
+          hash,
+          v.fulfillment,
+          subtotal,
+          v.recipient,
+          v.phone,
+          v.address,
+          v.point?.lat ?? null,
+          v.point?.lng ?? null,
+        ],
+      );
+      for (const { p, quantity } of items) {
+        await c.query('INSERT INTO order_items VALUES($1,$2,$3,$4,$5)', [
+          id,
+          p.id,
+          p.name,
+          p.price_satang,
+          quantity,
+        ]);
+        await c.query(
+          'UPDATE products SET stock=stock-$1,reserved=reserved+$1,version=version+1,updated_at=now() WHERE id=$2',
+          [quantity, p.id],
+        );
+        await this.stockLog(c, a, p, 'order.reserved', -quantity, id);
+      }
+      await c.query(
+        "INSERT INTO order_history VALUES($1,$2,$3,'placed','ลูกค้ายืนยันคำสั่งซื้อ',now())",
+        [randomUUID(), id, a.id],
+      );
+      return (await c.query(`${select} WHERE o.id=$1`, [id])).rows[0];
+    });
+  }
+  async action(a: Actor, id: string, v: z.infer<typeof orderAction>) {
+    return this.db.transaction(async (c) => {
+      const ref = (await c.query('SELECT store_id FROM orders WHERE id=$1', [id])).rows[0];
+      if (!ref) throw new ForbiddenException();
+      const store = await this.shop(c, ref.store_id);
+      const order = (await c.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (v.action === 'cancel' ? order.buyer_id !== a.id : !canManage(a, store))
+        throw new ForbiddenException();
+      if (order.version !== v.version)
+        throw new ConflictException('รายการเปลี่ยนแปลงแล้ว กรุณาโหลดใหม่');
+      const allowed =
+        v.action === 'complete' ? order.status === 'accepted' : order.status === 'placed';
+      if (!allowed) throw new ConflictException('ไม่สามารถเปลี่ยนสถานะนี้ได้');
+      const status = {
+        accept: 'accepted',
+        complete: 'completed',
+        cancel: 'cancelled',
+        reject: 'rejected',
+      }[v.action];
+      if (v.action !== 'accept') {
+        const items = (
+          await c.query('SELECT * FROM order_items WHERE order_id=$1 ORDER BY product_id', [id])
+        ).rows;
+        for (const i of items) {
+          const p = (
+            await c.query('SELECT id,stock,reserved,version FROM products WHERE id=$1 FOR UPDATE', [
+              i.product_id,
+            ])
+          ).rows[0];
+          const returned = v.action === 'complete' ? 0 : i.quantity;
+          await c.query(
+            'UPDATE products SET stock=stock+$1,reserved=reserved-$2,version=version+1,updated_at=now() WHERE id=$3',
+            [returned, i.quantity, p.id],
+          );
+          await this.stockLog(c, a, p, 'order.' + status, returned, id);
+        }
+      }
+      await c.query('UPDATE orders SET status=$1,version=version+1,updated_at=now() WHERE id=$2', [
+        status,
+        id,
+      ]);
+      await c.query('INSERT INTO order_history VALUES($1,$2,$3,$4,$5,now())', [
+        randomUUID(),
+        id,
+        a.id,
+        status,
+        v.reason,
+      ]);
+      return (await c.query(`${select} WHERE o.id=$1`, [id])).rows[0];
+    });
+  }
 }

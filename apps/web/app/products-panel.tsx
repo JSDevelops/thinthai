@@ -1,21 +1,508 @@
-"use client";
-import {useEffect,useRef,useState} from 'react';
-type Store={id:string;name:string;category:string};
-type Product={id:string;storeId:string;name:string;description:string;category:string;fulfillment:string;priceSatang:number;stock:number;reserved:number;active:boolean;version:number;hasImage:boolean};
-const methods:Record<string,string>={instant_food_delivery:'ส่งอาหารทันที',parcel_delivery:'ส่งพัสดุ',pickup:'รับที่ร้าน'};
-async function api(path:string,body?:unknown){const r=await fetch('/api/v1/'+path,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-ThinThai-Action':'1'},body:JSON.stringify(body)})});const data=await r.json();if(!r.ok)throw Error(data.message??'ทำรายการไม่สำเร็จ');return data;}
-export default function ProductsPanel({stores}:{stores:Store[]}){
- const [storeId,setStoreId]=useState(stores[0]?.id??''),[products,setProducts]=useState<Product[]>([]),[selected,setSelected]=useState<Product|null|undefined>(undefined),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(false);
- const [name,setName]=useState(''),[description,setDescription]=useState(''),[category,setCategory]=useState('food'),[method,setMethod]=useState('pickup'),[price,setPrice]=useState(''),[initialStock,setInitialStock]=useState('0'),[active,setActive]=useState(false),[file,setFile]=useState<File|null>(null),[delta,setDelta]=useState(''),[reason,setReason]=useState('');
- const [history,setHistory]=useState<{event:string;reason:string;delta:number|null;createdAt:string;actor:string;after:Product}[]|null>(null);const key=useRef('');
- useEffect(()=>{let canceled=false;setSelected(undefined);setHistory(null);setProducts([]);setError('');if(!storeId)return;setLoading(true);void api('stores/'+storeId+'/products').then(rows=>{if(!canceled)setProducts(rows);}).catch(e=>{if(!canceled)setError(e.message);}).finally(()=>{if(!canceled)setLoading(false);});return()=>{canceled=true;};},[storeId]);
- function choose(p:Product|null){setSelected(p);setName(p?.name??'');setDescription(p?.description??'');setCategory(p?.category??'food');setMethod(p?.fulfillment??'pickup');setPrice(p?String(p.priceSatang/100):'');setInitialStock('0');setActive(p?.active??false);setDelta('');setReason('');setFile(null);setHistory(null);setError('');setNotice('');key.current=crypto.randomUUID();}
- async function run(work:()=>Promise<Product>,message:string){setBusy(true);setError('');setNotice('');try{const p=await work();setSelected(p);setProducts(await api('stores/'+storeId+'/products'));setNotice(message);return true;}catch(e){setError((e as Error).message);return false;}finally{setBusy(false);}}
- async function save(e:React.FormEvent){e.preventDefault();const amount=Number(price)*100;if(!Number.isFinite(amount)||Math.abs(amount-Math.round(amount))>.000001){setError('ราคาใช้ทศนิยมได้ไม่เกิน 2 ตำแหน่ง');return;}await run(()=>api(selected?'products/'+selected.id:'stores/'+storeId+'/products',{name,description,category,fulfillment:method,priceSatang:Math.round(amount),active,...(selected?{version:selected.version}:{initialStock:Number(initialStock)})}),'บันทึกสินค้าแล้ว');}
- async function image(remove=false){if(!selected)return;if(!remove&&(!file||file.size>2*1024*1024||!['image/jpeg','image/png','image/webp'].includes(file.type))){setError('เลือก JPG, PNG หรือ WebP ไม่เกิน 2 MB');return;}await run(async()=>{let data:string|null=null;if(!remove){data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('อ่านไฟล์ไม่สำเร็จ'));reader.readAsDataURL(file!);});}return api('products/'+selected.id+'/image',{version:selected.version,data});},remove?'ลบรูปแล้ว':'บันทึกรูปแล้ว');}
- async function adjust(e:React.FormEvent){e.preventDefault();if(!selected)return;const success=await run(()=>api('products/'+selected.id+'/stock',{version:selected.version,delta:Number(delta),reason,requestKey:key.current}),'ปรับสต๊อกแล้ว');if(success){setDelta('');setReason('');key.current=crypto.randomUUID();}}
- async function showHistory(p:Product){setBusy(true);setError('');try{setHistory(await api('products/'+p.id+'/history'));}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
- return <section className="panel products-panel"><div className="panel-head"><div><h2>สินค้าในร้าน</h2><p>จัดการสินค้า รูปภาพ และจำนวนพร้อมขาย</p></div><a href="/catalog" target="_blank" rel="noreferrer">ดูหน้าสินค้าสำหรับลูกค้า ↗</a></div><label>เลือกร้าน<select aria-label="เลือกร้าน" disabled={busy} value={storeId} onChange={e=>{setStoreId(e.target.value);setNotice('');}}>{stores.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}</select></label>{error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="success">{notice}</p>}{!storeId?<p className="empty">ยังไม่มีร้านที่คุณจัดการได้</p>:<><div className="editor-actions"><button disabled={busy||loading} onClick={()=>choose(null)}>เพิ่มสินค้า</button><button className="outline" disabled={busy||loading} onClick={async()=>{setBusy(true);try{setProducts(await api('stores/'+storeId+'/products'));setSelected(undefined);setError('');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>โหลดข้อมูลล่าสุด</button></div>{selected!==undefined&&<section className="product-editor"><form onSubmit={save}><h3>{selected?'แก้ไขสินค้า':'สินค้าใหม่'}</h3><fieldset disabled={busy} className="editor-fields"><div className="form-grid"><label>ชื่อสินค้า<input required maxLength={120} value={name} onChange={e=>setName(e.target.value)}/></label><label>หมวดสินค้า<select aria-label="หมวดสินค้า" value={category} onChange={e=>{setCategory(e.target.value);if(e.target.value!=='food'&&method==='instant_food_delivery')setMethod('pickup');}}><option value="food">อาหาร</option><option value="craft">สินค้าชุมชน</option></select></label><label>ราคา (บาท)<input type="number" required min="0.01" max="1000000" step="0.01" value={price} onChange={e=>setPrice(e.target.value)}/></label><label>วิธีรับสินค้า<select aria-label="วิธีรับสินค้า" value={method} onChange={e=>setMethod(e.target.value)}><option value="pickup">รับที่ร้าน</option><option value="parcel_delivery">ส่งพัสดุ</option>{category==='food'&&stores.find(s=>s.id===storeId)?.category==='food'&&<option value="instant_food_delivery">ส่งอาหารทันที</option>}</select></label><label>สถานะสินค้า<select aria-label="สถานะสินค้า" value={active?'on':'off'} onChange={e=>setActive(e.target.value==='on')}><option value="off">ปิดขาย</option><option value="on">เปิดขาย</option></select></label>{!selected&&<label>สต๊อกเริ่มต้น<input type="number" required min="0" max="1000000" step="1" value={initialStock} onChange={e=>setInitialStock(e.target.value)}/></label>}</div><label>รายละเอียดสินค้า<textarea maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)}/></label><p className="footnote">อาหารแห้งเลือกส่งพัสดุได้ ตรวจโซนเฉพาะ “ส่งอาหารทันที”</p><div className="editor-actions"><button>บันทึกสินค้า</button><button type="button" className="outline" onClick={()=>setSelected(undefined)}>ปิดฟอร์มสินค้า</button></div></fieldset></form>
- {selected&&<><section className="product-photo"><h3>รูปปกสินค้า</h3>{selected.hasImage&&<img src={'/api/v1/products/'+selected.id+'/image?v='+selected.version} alt={selected.name}/>}<label>เลือกรูปสินค้า<input key={selected.id} type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>setFile(e.target.files?.[0]??null)}/></label><p className="footnote">1 รูปต่อสินค้า · JPG / PNG / WebP ไม่เกิน 2 MB และ 16 ล้านพิกเซล</p><div className="editor-actions"><button type="button" disabled={busy||!file} onClick={()=>image()}>บันทึกรูป</button>{selected.hasImage&&<button type="button" className="outline" disabled={busy} onClick={()=>image(true)}>ลบรูป</button>}</div></section><form className="stock-form" onSubmit={adjust}><h3>ปรับสต๊อก · ปัจจุบัน {selected.stock} ชิ้น</h3><p>กำลังจองในคำสั่งซื้อ {selected.reserved} ชิ้น</p><fieldset className="editor-fields" disabled={busy}><div className="form-grid"><label>จำนวนที่เพิ่มหรือลด<input type="number" step="1" required min="-1000000" max="1000000" placeholder="เช่น 10 หรือ -2" value={delta} onChange={e=>{setDelta(e.target.value);key.current=crypto.randomUUID();}}/></label><label>เหตุผล<input required minLength={3} maxLength={300} value={reason} onChange={e=>{setReason(e.target.value);key.current=crypto.randomUUID();}}/></label></div><button>บันทึกสต๊อก</button></fieldset></form></>}
- </section>}{loading?<p role="status">กำลังโหลดสินค้า…</p>:<div className="product-grid">{products.map(p=><article className="product-card" key={p.id}>{p.hasImage?<img src={'/api/v1/products/'+p.id+'/image?v='+p.version} alt={p.name}/>:<div className="product-placeholder">ยังไม่มีรูป</div>}<div className="store-body"><h3>{p.name}</h3><p className="product-price">{(p.priceSatang/100).toLocaleString('th-TH',{minimumFractionDigits:2})} บาท</p><span className="badge">{p.active?'เปิดขาย':'ปิดขาย'} · {p.stock} ชิ้น</span><p>{methods[p.fulfillment]}</p><div className="store-actions"><button className="outline" disabled={busy} onClick={()=>choose(p)}>แก้ไขสินค้า</button><button className="outline" disabled={busy} onClick={()=>showHistory(p)}>ประวัติสินค้า</button></div></div></article>)}</div>}{!loading&&products.length===0&&<p className="empty">ยังไม่มีสินค้า กดเพิ่มสินค้าเพื่อเริ่มต้น</p>}{history&&<section className="application-history"><h3>ประวัติสินค้าและสต๊อก</h3>{history.map((h,i)=><p key={i}>{h.reason} · {h.delta!==null?'เปลี่ยน '+h.delta+' ชิ้น → คงเหลือ '+h.after.stock+' ชิ้น · ':''}{h.actor} · {new Date(h.createdAt).toLocaleString('th-TH')}</p>)}</section>}</>}</section>;
+'use client';
+import { useEffect, useRef, useState } from 'react';
+type Store = { id: string; name: string; category: string };
+type Product = {
+  id: string;
+  storeId: string;
+  name: string;
+  description: string;
+  category: string;
+  fulfillment: string;
+  priceSatang: number;
+  stock: number;
+  reserved: number;
+  active: boolean;
+  version: number;
+  hasImage: boolean;
+};
+const methods: Record<string, string> = {
+  instant_food_delivery: 'ส่งอาหารทันที',
+  parcel_delivery: 'ส่งพัสดุ',
+  pickup: 'รับที่ร้าน',
+};
+async function api(path: string, body?: unknown) {
+  const r = await fetch('/api/v1/' + path, {
+    cache: 'no-store',
+    ...(body === undefined
+      ? {}
+      : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-ThinThai-Action': '1' },
+          body: JSON.stringify(body),
+        }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw Error(data.message ?? 'ทำรายการไม่สำเร็จ');
+  return data;
+}
+export default function ProductsPanel({ stores }: { stores: Store[] }) {
+  const [storeId, setStoreId] = useState(stores[0]?.id ?? ''),
+    [products, setProducts] = useState<Product[]>([]),
+    [selected, setSelected] = useState<Product | null | undefined>(undefined),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [notice, setNotice] = useState(''),
+    [loading, setLoading] = useState(false);
+  const [name, setName] = useState(''),
+    [description, setDescription] = useState(''),
+    [category, setCategory] = useState('food'),
+    [method, setMethod] = useState('pickup'),
+    [price, setPrice] = useState(''),
+    [initialStock, setInitialStock] = useState('0'),
+    [active, setActive] = useState(false),
+    [file, setFile] = useState<File | null>(null),
+    [delta, setDelta] = useState(''),
+    [reason, setReason] = useState('');
+  const [history, setHistory] = useState<
+    | {
+        event: string;
+        reason: string;
+        delta: number | null;
+        createdAt: string;
+        actor: string;
+        after: Product;
+      }[]
+    | null
+  >(null);
+  const key = useRef('');
+  useEffect(() => {
+    let canceled = false;
+    setSelected(undefined);
+    setHistory(null);
+    setProducts([]);
+    setError('');
+    if (!storeId) return;
+    setLoading(true);
+    void api('stores/' + storeId + '/products')
+      .then((rows) => {
+        if (!canceled) setProducts(rows);
+      })
+      .catch((e) => {
+        if (!canceled) setError(e.message);
+      })
+      .finally(() => {
+        if (!canceled) setLoading(false);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [storeId]);
+  function choose(p: Product | null) {
+    setSelected(p);
+    setName(p?.name ?? '');
+    setDescription(p?.description ?? '');
+    setCategory(p?.category ?? 'food');
+    setMethod(p?.fulfillment ?? 'pickup');
+    setPrice(p ? String(p.priceSatang / 100) : '');
+    setInitialStock('0');
+    setActive(p?.active ?? false);
+    setDelta('');
+    setReason('');
+    setFile(null);
+    setHistory(null);
+    setError('');
+    setNotice('');
+    key.current = crypto.randomUUID();
+  }
+  async function run(work: () => Promise<Product>, message: string) {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const p = await work();
+      setSelected(p);
+      setProducts(await api('stores/' + storeId + '/products'));
+      setNotice(message);
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = Number(price) * 100;
+    if (!Number.isFinite(amount) || Math.abs(amount - Math.round(amount)) > 0.000001) {
+      setError('ราคาใช้ทศนิยมได้ไม่เกิน 2 ตำแหน่ง');
+      return;
+    }
+    await run(
+      () =>
+        api(selected ? 'products/' + selected.id : 'stores/' + storeId + '/products', {
+          name,
+          description,
+          category,
+          fulfillment: method,
+          priceSatang: Math.round(amount),
+          active,
+          ...(selected ? { version: selected.version } : { initialStock: Number(initialStock) }),
+        }),
+      'บันทึกสินค้าแล้ว',
+    );
+  }
+  async function image(remove = false) {
+    if (!selected) return;
+    if (
+      !remove &&
+      (!file ||
+        file.size > 2 * 1024 * 1024 ||
+        !['image/jpeg', 'image/png', 'image/webp'].includes(file.type))
+    ) {
+      setError('เลือก JPG, PNG หรือ WebP ไม่เกิน 2 MB');
+      return;
+    }
+    await run(
+      async () => {
+        let data: string | null = null;
+        if (!remove) {
+          data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(',')[1]);
+            reader.onerror = () => reject(Error('อ่านไฟล์ไม่สำเร็จ'));
+            reader.readAsDataURL(file!);
+          });
+        }
+        return api('products/' + selected.id + '/image', { version: selected.version, data });
+      },
+      remove ? 'ลบรูปแล้ว' : 'บันทึกรูปแล้ว',
+    );
+  }
+  async function adjust(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected) return;
+    const success = await run(
+      () =>
+        api('products/' + selected.id + '/stock', {
+          version: selected.version,
+          delta: Number(delta),
+          reason,
+          requestKey: key.current,
+        }),
+      'ปรับสต๊อกแล้ว',
+    );
+    if (success) {
+      setDelta('');
+      setReason('');
+      key.current = crypto.randomUUID();
+    }
+  }
+  async function showHistory(p: Product) {
+    setBusy(true);
+    setError('');
+    try {
+      setHistory(await api('products/' + p.id + '/history'));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="panel products-panel">
+      <div className="panel-head">
+        <div>
+          <h2>สินค้าในร้าน</h2>
+          <p>จัดการสินค้า รูปภาพ และจำนวนพร้อมขาย</p>
+        </div>
+        <a href="/catalog" target="_blank" rel="noreferrer">
+          ดูหน้าสินค้าสำหรับลูกค้า ↗
+        </a>
+      </div>
+      <label>
+        เลือกร้าน
+        <select
+          aria-label="เลือกร้าน"
+          disabled={busy}
+          value={storeId}
+          onChange={(e) => {
+            setStoreId(e.target.value);
+            setNotice('');
+          }}
+        >
+          {stores.map((s) => (
+            <option value={s.id} key={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="success">
+          {notice}
+        </p>
+      )}
+      {!storeId ? (
+        <p className="empty">ยังไม่มีร้านที่คุณจัดการได้</p>
+      ) : (
+        <>
+          <div className="editor-actions">
+            <button disabled={busy || loading} onClick={() => choose(null)}>
+              เพิ่มสินค้า
+            </button>
+            <button
+              className="outline"
+              disabled={busy || loading}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  setProducts(await api('stores/' + storeId + '/products'));
+                  setSelected(undefined);
+                  setError('');
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              โหลดข้อมูลล่าสุด
+            </button>
+          </div>
+          {selected !== undefined && (
+            <section className="product-editor">
+              <form onSubmit={save}>
+                <h3>{selected ? 'แก้ไขสินค้า' : 'สินค้าใหม่'}</h3>
+                <fieldset disabled={busy} className="editor-fields">
+                  <div className="form-grid">
+                    <label>
+                      ชื่อสินค้า
+                      <input
+                        required
+                        maxLength={120}
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      หมวดสินค้า
+                      <select
+                        aria-label="หมวดสินค้า"
+                        value={category}
+                        onChange={(e) => {
+                          setCategory(e.target.value);
+                          if (e.target.value !== 'food' && method === 'instant_food_delivery')
+                            setMethod('pickup');
+                        }}
+                      >
+                        <option value="food">อาหาร</option>
+                        <option value="craft">สินค้าชุมชน</option>
+                      </select>
+                    </label>
+                    <label>
+                      ราคา (บาท)
+                      <input
+                        type="number"
+                        required
+                        min="0.01"
+                        max="1000000"
+                        step="0.01"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      วิธีรับสินค้า
+                      <select
+                        aria-label="วิธีรับสินค้า"
+                        value={method}
+                        onChange={(e) => setMethod(e.target.value)}
+                      >
+                        <option value="pickup">รับที่ร้าน</option>
+                        <option value="parcel_delivery">ส่งพัสดุ</option>
+                        {category === 'food' &&
+                          stores.find((s) => s.id === storeId)?.category === 'food' && (
+                            <option value="instant_food_delivery">ส่งอาหารทันที</option>
+                          )}
+                      </select>
+                    </label>
+                    <label>
+                      สถานะสินค้า
+                      <select
+                        aria-label="สถานะสินค้า"
+                        value={active ? 'on' : 'off'}
+                        onChange={(e) => setActive(e.target.value === 'on')}
+                      >
+                        <option value="off">ปิดขาย</option>
+                        <option value="on">เปิดขาย</option>
+                      </select>
+                    </label>
+                    {!selected && (
+                      <label>
+                        สต๊อกเริ่มต้น
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          max="1000000"
+                          step="1"
+                          value={initialStock}
+                          onChange={(e) => setInitialStock(e.target.value)}
+                        />
+                      </label>
+                    )}
+                  </div>
+                  <label>
+                    รายละเอียดสินค้า
+                    <textarea
+                      maxLength={2000}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
+                  </label>
+                  <p className="footnote">อาหารแห้งเลือกส่งพัสดุได้ ตรวจโซนเฉพาะ “ส่งอาหารทันที”</p>
+                  <div className="editor-actions">
+                    <button>บันทึกสินค้า</button>
+                    <button
+                      type="button"
+                      className="outline"
+                      onClick={() => setSelected(undefined)}
+                    >
+                      ปิดฟอร์มสินค้า
+                    </button>
+                  </div>
+                </fieldset>
+              </form>
+              {selected && (
+                <>
+                  <section className="product-photo">
+                    <h3>รูปปกสินค้า</h3>
+                    {selected.hasImage && (
+                      <img
+                        src={'/api/v1/products/' + selected.id + '/image?v=' + selected.version}
+                        alt={selected.name}
+                      />
+                    )}
+                    <label>
+                      เลือกรูปสินค้า
+                      <input
+                        key={selected.id}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={busy}
+                        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    <p className="footnote">
+                      1 รูปต่อสินค้า · JPG / PNG / WebP ไม่เกิน 2 MB และ 16 ล้านพิกเซล
+                    </p>
+                    <div className="editor-actions">
+                      <button type="button" disabled={busy || !file} onClick={() => image()}>
+                        บันทึกรูป
+                      </button>
+                      {selected.hasImage && (
+                        <button
+                          type="button"
+                          className="outline"
+                          disabled={busy}
+                          onClick={() => image(true)}
+                        >
+                          ลบรูป
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                  <form className="stock-form" onSubmit={adjust}>
+                    <h3>ปรับสต๊อก · ปัจจุบัน {selected.stock} ชิ้น</h3>
+                    <p>กำลังจองในคำสั่งซื้อ {selected.reserved} ชิ้น</p>
+                    <fieldset className="editor-fields" disabled={busy}>
+                      <div className="form-grid">
+                        <label>
+                          จำนวนที่เพิ่มหรือลด
+                          <input
+                            type="number"
+                            step="1"
+                            required
+                            min="-1000000"
+                            max="1000000"
+                            placeholder="เช่น 10 หรือ -2"
+                            value={delta}
+                            onChange={(e) => {
+                              setDelta(e.target.value);
+                              key.current = crypto.randomUUID();
+                            }}
+                          />
+                        </label>
+                        <label>
+                          เหตุผล
+                          <input
+                            required
+                            minLength={3}
+                            maxLength={300}
+                            value={reason}
+                            onChange={(e) => {
+                              setReason(e.target.value);
+                              key.current = crypto.randomUUID();
+                            }}
+                          />
+                        </label>
+                      </div>
+                      <button>บันทึกสต๊อก</button>
+                    </fieldset>
+                  </form>
+                </>
+              )}
+            </section>
+          )}
+          {loading ? (
+            <p role="status">กำลังโหลดสินค้า…</p>
+          ) : (
+            <div className="product-grid">
+              {products.map((p) => (
+                <article className="product-card" key={p.id}>
+                  {p.hasImage ? (
+                    <img src={'/api/v1/products/' + p.id + '/image?v=' + p.version} alt={p.name} />
+                  ) : (
+                    <div className="product-placeholder">ยังไม่มีรูป</div>
+                  )}
+                  <div className="store-body">
+                    <h3>{p.name}</h3>
+                    <p className="product-price">
+                      {(p.priceSatang / 100).toLocaleString('th-TH', { minimumFractionDigits: 2 })}{' '}
+                      บาท
+                    </p>
+                    <span className="badge">
+                      {p.active ? 'เปิดขาย' : 'ปิดขาย'} · {p.stock} ชิ้น
+                    </span>
+                    <p>{methods[p.fulfillment]}</p>
+                    <div className="store-actions">
+                      <button className="outline" disabled={busy} onClick={() => choose(p)}>
+                        แก้ไขสินค้า
+                      </button>
+                      <button className="outline" disabled={busy} onClick={() => showHistory(p)}>
+                        ประวัติสินค้า
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+          {!loading && products.length === 0 && (
+            <p className="empty">ยังไม่มีสินค้า กดเพิ่มสินค้าเพื่อเริ่มต้น</p>
+          )}
+          {history && (
+            <section className="application-history">
+              <h3>ประวัติสินค้าและสต๊อก</h3>
+              {history.map((h, i) => (
+                <p key={i}>
+                  {h.reason} ·{' '}
+                  {h.delta !== null
+                    ? 'เปลี่ยน ' + h.delta + ' ชิ้น → คงเหลือ ' + h.after.stock + ' ชิ้น · '
+                    : ''}
+                  {h.actor} · {new Date(h.createdAt).toLocaleString('th-TH')}
+                </p>
+              ))}
+            </section>
+          )}
+        </>
+      )}
+    </section>
+  );
 }

@@ -1,9 +1,180 @@
-"use client";
-import {useEffect,useState} from 'react';
-import {tripApi,tripDate,money} from './trip-shared';
-type Booking={id:string;storeName:string;title:string;meetingPoint:string;startsAt:string;seats:number;unitPriceSatang:number;contactName:string;phone:string;status:string;version:number;history:{status:string;reason:string;createdAt:string}[]};
-const labels:Record<string,string>={pending:'รอยืนยัน',confirmed:'ยืนยันแล้ว',cancelled:'ผู้เดินทางยกเลิก',rejected:'ผู้ให้บริการยกเลิก',completed:'เดินทางเสร็จแล้ว'};
-const actions:Record<string,string>={confirm:'ยืนยันการจอง',reject:'ปฏิเสธ / ยกเลิกทริป',complete:'จบทริป',cancel:'ยกเลิกการจอง'};
-export default function BookingsPanel({manage=false}:{manage?:boolean}){const [rows,setRows]=useState<Booking[]>([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[selected,setSelected]=useState<{b:Booking;action:string}|null>(null),[reason,setReason]=useState('');async function load(){setLoading(true);setError('');try{setRows(await tripApi('bookings/'+(manage?'manage':'my')));}catch(e){setError((e as Error).message);}finally{setLoading(false);}}useEffect(()=>{void load();},[manage]);async function submit(e:React.FormEvent){e.preventDefault();if(!selected||busy)return;setBusy(true);setError('');try{await tripApi('bookings/'+selected.b.id+'/actions',{version:selected.b.version,action:selected.action,reason});setSelected(null);await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
- return <section className="panel bookings-panel"><div className="panel-head"><h2>{manage?'การจองของชุมชน':'การจองของฉัน'}</h2><button disabled={loading||busy} className="outline" onClick={load}>โหลดการจองใหม่</button></div><p>ยังไม่รับชำระเงินจริง · ยกเลิกเองได้ก่อนยืนยันและก่อนเริ่มทริป</p>{error&&<p role="alert" className="error">{error} <a href="/workspace">เข้าสู่ระบบ</a></p>}{selected&&<form className="auth-form" onSubmit={submit}><h3>{actions[selected.action]} · {selected.b.title}</h3><label>เหตุผลการจอง<input required minLength={3} maxLength={300} value={reason} disabled={busy} onChange={e=>setReason(e.target.value)}/></label><button disabled={busy}>บันทึกสถานะการจอง</button><button type="button" className="outline" disabled={busy} onClick={()=>setSelected(null)}>กลับ</button></form>}{loading?<p>กำลังโหลด…</p>:!rows.length&&!error?<p className="empty">ยังไม่มีการจอง <a href="/trips">ค้นหาทริป</a></p>:null}<div className="application-list">{rows.map(b=>{const future=new Date(b.startsAt)>new Date();const options=manage?(b.status==='pending'&&future?['confirm','reject']:b.status==='confirmed'?(future?['reject']:['complete']):[]):b.status==='pending'&&future?['cancel']:[];return <article className="application-card booking-card" key={b.id}><div className="panel-head"><h3>{b.title}</h3><span className="badge">{labels[b.status]}</span></div><p>เลขการจอง {b.id.slice(0,8)} · {b.storeName}</p><p><strong>{tripDate(b.startsAt)} (เวลาไทย)</strong></p><p>จุดนัดพบ: {b.meetingPoint}</p><p>{b.seats} คน · รวม {money(b.seats*b.unitPriceSatang)} บาท</p><p>ผู้เดินทาง: {b.contactName} · {b.phone}</p><div className="store-actions">{options.map(action=><button disabled={busy} key={action} onClick={()=>{setSelected({b,action});setReason('');}}>{actions[action]}</button>)}</div><details><summary>ประวัติการจอง</summary>{b.history.map((h,i)=><p key={i}>{labels[h.status]} · {h.reason} · {tripDate(h.createdAt)}</p>)}</details></article>;})}</div></section>;
+'use client';
+import { useEffect, useState } from 'react';
+import { tripApi, tripDate, money } from './trip-shared';
+type Booking = {
+  id: string;
+  storeName: string;
+  title: string;
+  meetingPoint: string;
+  startsAt: string;
+  seats: number;
+  unitPriceSatang: number;
+  contactName: string;
+  phone: string;
+  status: string;
+  version: number;
+  history: { status: string; reason: string; createdAt: string }[];
+};
+const labels: Record<string, string> = {
+  pending: 'รอยืนยัน',
+  confirmed: 'ยืนยันแล้ว',
+  cancelled: 'ผู้เดินทางยกเลิก',
+  rejected: 'ผู้ให้บริการยกเลิก',
+  completed: 'เดินทางเสร็จแล้ว',
+};
+const actions: Record<string, string> = {
+  confirm: 'ยืนยันการจอง',
+  reject: 'ปฏิเสธ / ยกเลิกทริป',
+  complete: 'จบทริป',
+  cancel: 'ยกเลิกการจอง',
+};
+export default function BookingsPanel({ manage = false }: { manage?: boolean }) {
+  const [rows, setRows] = useState<Booking[]>([]),
+    [loading, setLoading] = useState(true),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [selected, setSelected] = useState<{ b: Booking; action: string } | null>(null),
+    [reason, setReason] = useState('');
+  async function load() {
+    setLoading(true);
+    setError('');
+    try {
+      setRows(await tripApi('bookings/' + (manage ? 'manage' : 'my')));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, [manage]);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await tripApi('bookings/' + selected.b.id + '/actions', {
+        version: selected.b.version,
+        action: selected.action,
+        reason,
+      });
+      setSelected(null);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="panel bookings-panel">
+      <div className="panel-head">
+        <h2>{manage ? 'การจองของชุมชน' : 'การจองของฉัน'}</h2>
+        <button disabled={loading || busy} className="outline" onClick={load}>
+          โหลดการจองใหม่
+        </button>
+      </div>
+      <p>ยังไม่รับชำระเงินจริง · ยกเลิกเองได้ก่อนยืนยันและก่อนเริ่มทริป</p>
+      {error && (
+        <p role="alert" className="error">
+          {error} <a href="/workspace">เข้าสู่ระบบ</a>
+        </p>
+      )}
+      {selected && (
+        <form className="auth-form" onSubmit={submit}>
+          <h3>
+            {actions[selected.action]} · {selected.b.title}
+          </h3>
+          <label>
+            เหตุผลการจอง
+            <input
+              required
+              minLength={3}
+              maxLength={300}
+              value={reason}
+              disabled={busy}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </label>
+          <button disabled={busy}>บันทึกสถานะการจอง</button>
+          <button
+            type="button"
+            className="outline"
+            disabled={busy}
+            onClick={() => setSelected(null)}
+          >
+            กลับ
+          </button>
+        </form>
+      )}
+      {loading ? (
+        <p>กำลังโหลด…</p>
+      ) : !rows.length && !error ? (
+        <p className="empty">
+          ยังไม่มีการจอง <a href="/trips">ค้นหาทริป</a>
+        </p>
+      ) : null}
+      <div className="application-list">
+        {rows.map((b) => {
+          const future = new Date(b.startsAt) > new Date();
+          const options = manage
+            ? b.status === 'pending' && future
+              ? ['confirm', 'reject']
+              : b.status === 'confirmed'
+                ? future
+                  ? ['reject']
+                  : ['complete']
+                : []
+            : b.status === 'pending' && future
+              ? ['cancel']
+              : [];
+          return (
+            <article className="application-card booking-card" key={b.id}>
+              <div className="panel-head">
+                <h3>{b.title}</h3>
+                <span className="badge">{labels[b.status]}</span>
+              </div>
+              <p>
+                เลขการจอง {b.id.slice(0, 8)} · {b.storeName}
+              </p>
+              <p>
+                <strong>{tripDate(b.startsAt)} (เวลาไทย)</strong>
+              </p>
+              <p>จุดนัดพบ: {b.meetingPoint}</p>
+              <p>
+                {b.seats} คน · รวม {money(b.seats * b.unitPriceSatang)} บาท
+              </p>
+              <p>
+                ผู้เดินทาง: {b.contactName} · {b.phone}
+              </p>
+              <div className="store-actions">
+                {options.map((action) => (
+                  <button
+                    disabled={busy}
+                    key={action}
+                    onClick={() => {
+                      setSelected({ b, action });
+                      setReason('');
+                    }}
+                  >
+                    {actions[action]}
+                  </button>
+                ))}
+              </div>
+              <details>
+                <summary>ประวัติการจอง</summary>
+                {b.history.map((h, i) => (
+                  <p key={i}>
+                    {labels[h.status]} · {h.reason} · {tripDate(h.createdAt)}
+                  </p>
+                ))}
+              </details>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
 }

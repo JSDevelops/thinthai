@@ -1,249 +1,1474 @@
-import {test,before,after} from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import {spawn,spawnSync} from 'node:child_process';
-import {once} from 'node:events';
-import {randomUUID,randomBytes} from 'node:crypto';
-import {config} from 'dotenv';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { randomUUID, randomBytes } from 'node:crypto';
+import { config } from 'dotenv';
 import pg from 'pg';
 import passwords from '../../apps/api/dist/password.js';
-config({quiet:true});
-const url=new URL(process.env.TEST_DATABASE_URL);
-if(url.hostname!=='127.0.0.1'||url.port!=='55433'||url.pathname!=='/thinthai_test')throw Error('Tests only run against isolated ThinThai test DB');
-const db=new pg.Pool({connectionString:url.href});
-let child;const base='http://127.0.0.1:4201/api/v1/';
-const headers={Origin:'http://127.0.0.1:3200','Content-Type':'application/json','X-ThinThai-Action':'1'};
-const password=randomBytes(18).toString('base64url');const users={};const stores=[randomUUID(),randomUUID(),randomUUID()];
-async function start(){child=spawn(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,DATABASE_URL:url.href,API_PORT:'4201'},stdio:'pipe'});await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('API startup timeout')),12000);child.stdout.on('data',s=>{if(s.toString().includes('successfully started')){clearTimeout(timer);resolve();}});child.on('exit',()=>{clearTimeout(timer);reject(Error('API exited'));});});for(let i=0;i<100;i++){try{if((await fetch(base+'health')).ok)return;}catch{}await new Promise(r=>setTimeout(r,50));}throw Error('API health check timeout');}
-async function stop(){if(child&&child.exitCode===null){const done=once(child,'exit');child.kill();await done;}}
-const post=(path,body,cookie,extra={})=>fetch(base+path,{method:'POST',headers:{...headers,...(cookie?{cookie}:{}),...extra},body:JSON.stringify(body)});
-async function login(email,pw=password){const res=await post('auth/login',{email,password:pw});assert.equal(res.status,201);return res.headers.get('set-cookie').split(';')[0];}
-const get=(path,cookie)=>fetch(base+path,{headers:cookie?{cookie}:{}});
-before(async()=>{
- const migrated=spawnSync(process.execPath,['scripts/migrate.mjs','--test'],{encoding:'utf8'});assert.equal(migrated.status,0,migrated.stderr);
- await db.query('TRUNCATE audit_events,auth_sessions,auth_rate_limits,store_memberships,admin_province_scopes,system_roles,stores,subdistricts,districts,provinces,app_users CASCADE');
- const hash=await passwords.hashPassword(password);
- for(const role of ['USER','MERCHANT','ADMIN','SUPER_ADMIN']){const id=randomUUID();const email=role.toLowerCase()+'@test.invalid';users[role]={id,email};await db.query('INSERT INTO app_users(id,auth_subject,display_name,email,password_hash) VALUES($1,$2,$3,$4,$5)',[id,'test:'+id,role,email,hash]);if(['ADMIN','SUPER_ADMIN'].includes(role))await db.query('INSERT INTO system_roles VALUES($1,$2)',[id,role]);}
- await db.query("INSERT INTO provinces VALUES('50','เชียงใหม่'),('75','สมุทรสงคราม'); INSERT INTO districts VALUES('d1','50','อำเภอหนึ่ง'),('d2','75','อำเภอสอง'); INSERT INTO subdistricts VALUES('t1','d1','50','ตำบลหนึ่ง'),('t2','d2','75','ตำบลสอง');");
- for(let i=0;i<3;i++)await db.query('INSERT INTO stores(id,name,subdistrict_id,category) VALUES($1,$2,$3,$4)',[stores[i],'Store '+i,i===2?'t2':'t1',i===1?'craft':'food']);
- await db.query('INSERT INTO store_memberships VALUES($1,$2)',[users.MERCHANT.id,stores[0]]);await db.query("INSERT INTO admin_province_scopes VALUES($1,'50')",[users.ADMIN.id]);await start();
+config({ quiet: true });
+const url = new URL(process.env.TEST_DATABASE_URL);
+if (url.hostname !== '127.0.0.1' || url.port !== '55433' || url.pathname !== '/thinthai_test')
+  throw Error('Tests only run against isolated ThinThai test DB');
+const db = new pg.Pool({ connectionString: url.href });
+let child;
+const base = 'http://127.0.0.1:4201/api/v1/';
+const headers = {
+  Origin: 'http://127.0.0.1:3200',
+  'Content-Type': 'application/json',
+  'X-ThinThai-Action': '1',
+};
+const password = randomBytes(18).toString('base64url');
+const users = {};
+const stores = [randomUUID(), randomUUID(), randomUUID()];
+async function start() {
+  child = spawn(process.execPath, ['apps/api/dist/main.js'], {
+    env: { ...process.env, DATABASE_URL: url.href, API_PORT: '4201' },
+    stdio: 'pipe',
+  });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(Error('API startup timeout')), 12000);
+    child.stdout.on('data', (s) => {
+      if (s.toString().includes('successfully started')) {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+    child.on('exit', () => {
+      clearTimeout(timer);
+      reject(Error('API exited'));
+    });
+  });
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await fetch(base + 'health')).ok) return;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw Error('API health check timeout');
+}
+async function stop() {
+  if (child && child.exitCode === null) {
+    const done = once(child, 'exit');
+    child.kill();
+    await done;
+  }
+}
+const post = (path, body, cookie, extra = {}) =>
+  fetch(base + path, {
+    method: 'POST',
+    headers: { ...headers, ...(cookie ? { cookie } : {}), ...extra },
+    body: JSON.stringify(body),
+  });
+async function login(email, pw = password) {
+  const res = await post('auth/login', { email, password: pw });
+  assert.equal(res.status, 201);
+  return res.headers.get('set-cookie').split(';')[0];
+}
+const get = (path, cookie) => fetch(base + path, { headers: cookie ? { cookie } : {} });
+before(async () => {
+  const migrated = spawnSync(process.execPath, ['scripts/migrate.mjs', '--test'], {
+    encoding: 'utf8',
+  });
+  assert.equal(migrated.status, 0, migrated.stderr);
+  await db.query(
+    'TRUNCATE audit_events,auth_sessions,auth_rate_limits,store_memberships,admin_province_scopes,system_roles,stores,subdistricts,districts,provinces,app_users CASCADE',
+  );
+  const hash = await passwords.hashPassword(password);
+  for (const role of ['USER', 'MERCHANT', 'ADMIN', 'SUPER_ADMIN']) {
+    const id = randomUUID();
+    const email = role.toLowerCase() + '@test.invalid';
+    users[role] = { id, email };
+    await db.query(
+      'INSERT INTO app_users(id,auth_subject,display_name,email,password_hash) VALUES($1,$2,$3,$4,$5)',
+      [id, 'test:' + id, role, email, hash],
+    );
+    if (['ADMIN', 'SUPER_ADMIN'].includes(role))
+      await db.query('INSERT INTO system_roles VALUES($1,$2)', [id, role]);
+  }
+  await db.query(
+    "INSERT INTO provinces VALUES('50','เชียงใหม่'),('75','สมุทรสงคราม'); INSERT INTO districts VALUES('d1','50','อำเภอหนึ่ง'),('d2','75','อำเภอสอง'); INSERT INTO subdistricts VALUES('t1','d1','50','ตำบลหนึ่ง'),('t2','d2','75','ตำบลสอง');",
+  );
+  for (let i = 0; i < 3; i++)
+    await db.query('INSERT INTO stores(id,name,subdistrict_id,category) VALUES($1,$2,$3,$4)', [
+      stores[i],
+      'Store ' + i,
+      i === 2 ? 't2' : 't1',
+      i === 1 ? 'craft' : 'food',
+    ]);
+  await db.query('INSERT INTO store_memberships VALUES($1,$2)', [users.MERCHANT.id, stores[0]]);
+  await db.query("INSERT INTO admin_province_scopes VALUES($1,'50')", [users.ADMIN.id]);
+  await start();
 });
-after(async()=>{await stop();await db.end();});
-test('demo endpoints removed; anonymous and forged role denied',async()=>{assert.equal((await get('demo/accounts')).status,404);assert.equal((await post('demo/session',{accountId:'super'})).status,404);assert.equal((await fetch(base+'stores',{headers:{'X-Role':'SUPER_ADMIN'}})).status,401);});
-test('registration persists hash, creates USER only, rejects role and store injection',async()=>{const input={name:'สมาชิกใหม่',email:'New@Example.test',password};const bad=await post('auth/register',{...input,role:'SUPER_ADMIN',storeIds:[stores[0]]});assert.equal(bad.status,400);const res=await post('auth/register',input);assert.equal(res.status,201);const a=await res.json();assert.equal(a.role,'USER');assert.deepEqual(a.storeIds,[]);assert.match(res.headers.get('set-cookie'),/HttpOnly/);assert.match(res.headers.get('set-cookie'),/SameSite=Strict/);const row=(await db.query('SELECT email,password_hash FROM app_users WHERE id=$1',[a.id])).rows[0];assert.equal(row.email,'new@example.test');assert.notEqual(row.password_hash,password);assert.ok(await passwords.verifyPassword(password,row.password_hash));assert.equal((await post('auth/register',{...input,email:' new@example.test '})).status,409);});
-test('login normalizes email; incorrect and nonexistent credentials have identical responses',async()=>{const a=await post('auth/login',{email:'user@test.invalid',password:'incorrect-password'});const b=await post('auth/login',{email:'absent@test.invalid',password:'incorrect-password'});assert.equal(a.status,401);assert.equal(b.status,401);assert.equal((await a.json()).message,(await b.json()).message);const cookie=await login(' USER@TEST.INVALID ');assert.equal((await (await get('me',cookie)).json()).role,'USER');assert.deepEqual(await (await get('stores',cookie)).json(),[]);});
-test('merchant cannot cross stores; logout invalidates DB session',async()=>{const cookie=await login(users.MERCHANT.email);assert.equal((await get('stores/'+stores[2],cookie)).status,403);assert.deepEqual((await (await get('stores',cookie)).json()).map(s=>s.id),[stores[0]]);assert.equal((await get('food-delivery',cookie)).status,403);await post('logout',{},cookie);assert.equal((await get('me',cookie)).status,401);});
-test('admin scope and food-only delivery; super admin sees all stores',async()=>{const cookie=await login(users.ADMIN.email);assert.equal((await get('stores/'+stores[2],cookie)).status,403);assert.deepEqual((await (await get('food-delivery',cookie)).json()).map(s=>s.id),[stores[0]]);const root=await login(users.SUPER_ADMIN.email);assert.equal((await (await get('stores',root)).json()).length,3);assert.equal((await (await get('food-delivery',root)).json()).length,2);});
-test('permission changes take effect in existing sessions',async()=>{const cookie=await login(users.ADMIN.email);await db.query('DELETE FROM admin_province_scopes WHERE user_id=$1',[users.ADMIN.id]);assert.deepEqual(await (await get('stores',cookie)).json(),[]);await db.query("INSERT INTO admin_province_scopes VALUES($1,'50')",[users.ADMIN.id]);});
-test('sessions and accounts survive API restart',async()=>{const cookie=await login('new@example.test');await stop();await start();assert.equal((await (await get('me',cookie)).json()).name,'สมาชิกใหม่');});
-test('password change revokes every device and old password',async()=>{const cookie=await login('new@example.test');const second=await login('new@example.test');assert.equal((await post('auth/password',{currentPassword:'wrong-password',newPassword:'Replacement-password-123'},cookie)).status,401);assert.equal((await post('auth/password',{currentPassword:password,newPassword:'Replacement-password-123'},cookie)).status,201);assert.equal((await get('me',cookie)).status,401);assert.equal((await get('me',second)).status,401);assert.equal((await post('auth/login',{email:'new@example.test',password})).status,401);await login('new@example.test','Replacement-password-123');});
-test('expired sessions and inactive accounts are rejected',async()=>{const cookie=await login(users.USER.email);await db.query("UPDATE auth_sessions SET expires_at=now()-interval '1 second' WHERE user_id=$1",[users.USER.id]);assert.equal((await get('me',cookie)).status,401);const second=await login(users.USER.email);await db.query('UPDATE app_users SET active=false WHERE id=$1',[users.USER.id]);assert.equal((await get('me',second)).status,401);assert.equal((await post('auth/login',{email:users.USER.email,password})).status,401);await db.query('UPDATE app_users SET active=true WHERE id=$1',[users.USER.id]);});
-test('CSRF origin, missing action header and short passwords rejected',async()=>{assert.equal((await post('auth/login',{email:users.USER.email,password},null,{Origin:'https://evil.example'})).status,403);assert.equal((await post('auth/login',{email:users.USER.email,password},null,{'X-ThinThai-Action':''})).status,403);assert.equal((await post('auth/register',{name:'Test',email:'short@test.invalid',password:'short'})).status,400);});
-test('rate limiting is persisted and resists concurrent attempts',async()=>{const requests=await Promise.all(Array.from({length:11},()=>post('auth/login',{email:'limit@test.invalid',password:'wrong-password'})));assert.equal(requests.filter(r=>r.status===429).length,1);await stop();await start();assert.equal((await post('auth/login',{email:'limit@test.invalid',password:'wrong-password'})).status,429);});
-test('migration rerun preserves users and sessions; schema validates area relationships',async()=>{const before=(await db.query('SELECT count(*) FROM app_users')).rows[0].count;const result=spawnSync(process.execPath,['scripts/migrate.mjs','--test'],{encoding:'utf8'});assert.equal(result.status,0,result.stderr);assert.equal((await db.query('SELECT count(*) FROM app_users')).rows[0].count,before);await assert.rejects(db.query("INSERT INTO subdistricts VALUES('invalid','d1','75','bad')"),{code:'23503'});});
-test('local auth cannot accidentally start in production',()=>{const p=spawnSync(process.execPath,['apps/api/dist/main.js'],{env:{...process.env,NODE_ENV:'production'},encoding:'utf8',timeout:10000});assert.equal(p.status,1);assert.match(p.stderr,/Local development only/);});
-const newStore={name:'ร้านทดสอบใหม่',address:'123 ถนนชุมชน',category:'food',subdistrictId:'t1',lat:18.788,lng:98.965,active:true};
-const edit=(s,changes={})=>({name:s.name,address:s.address,category:s.category,subdistrictId:s.subdistrictId,lat:s.lat,lng:s.lng,active:s.active,version:s.version,...changes});
-test('store create and edit enforce user/store/province scopes and strict fields',async()=>{
- const user=await login(users.USER.email),merchant=await login(users.MERCHANT.email),admin=await login(users.ADMIN.email);
- assert.equal((await post('stores',newStore,user)).status,403);
- assert.equal((await post('stores',{...newStore,subdistrictId:'t2'},admin)).status,403);
- assert.equal((await post('stores',{...newStore,deliveryEnabled:true},merchant)).status,400);
- assert.equal((await post('stores',{...newStore,lat:91},merchant)).status,400);
- assert.equal((await post('stores',{...newStore,lng:null},merchant)).status,400);
- assert.equal((await post('stores',{...newStore,subdistrictId:'absent'},merchant)).status,400);
- const res=await post('stores',newStore,merchant);assert.equal(res.status,201);let s=await res.json();
- assert.ok((await (await get('stores',merchant)).json()).some(row=>row.id===s.id));
- assert.equal((await post('stores/'+stores[2],{...newStore,version:1},merchant)).status,403);
- assert.equal((await post('stores/'+s.id,edit(s,{subdistrictId:'t2'}),admin)).status,403);
- const updated=await post('stores/'+s.id,edit(s,{name:'ชื่อใหม่'}),merchant);assert.equal(updated.status,201);const next=await updated.json();assert.equal(next.version,s.version+1);
- assert.equal((await post('stores/'+s.id,edit(s,{name:'stale overwrite'}),merchant)).status,409);
- assert.equal((await (await get('stores/'+s.id,merchant)).json()).name,'ชื่อใหม่');
- const h=await (await get('stores/'+s.id+'/history',merchant)).json();assert.equal(h.length,2);assert.equal(h[0].event,'store.updated');assert.equal(h[0].before.name,newStore.name);
- assert.equal((await get('stores/'+s.id+'/history',user)).status,403);
- await stop();await start();assert.equal((await (await get('stores/'+s.id,merchant)).json()).name,'ชื่อใหม่');
+after(async () => {
+  await stop();
+  await db.end();
 });
-test('food delivery requires admin, active food store and pin; moving pin revokes approval',async()=>{
- const admin=await login(users.ADMIN.email),merchant=await login(users.MERCHANT.email),root=await login(users.SUPER_ADMIN.email);
- let s=await (await get('stores/'+stores[0],admin)).json();
- assert.equal((await post('stores/'+s.id+'/delivery',{version:s.version,enabled:true,radiusKm:3},admin)).status,400);
- s=await (await post('stores/'+s.id,edit(s,{lat:18.788,lng:98.965}),merchant)).json();
- assert.equal((await post('stores/'+s.id+'/delivery',{version:s.version,enabled:true,radiusKm:3},merchant)).status,403);
- assert.equal((await post('stores/'+stores[2]+'/delivery',{version:1,enabled:true,radiusKm:3},admin)).status,403);
- assert.equal((await post('stores/'+stores[1]+'/delivery',{version:1,enabled:true,radiusKm:3},root)).status,403);
- assert.equal((await post('stores/'+s.id+'/delivery',{version:s.version,enabled:true,radiusKm:31},admin)).status,400);
- let res=await post('stores/'+s.id+'/delivery',{version:s.version,enabled:true,radiusKm:3},admin);assert.equal(res.status,201);s=await res.json();
- let check=await (await post('stores/'+s.id+'/delivery/check',{lat:18.788,lng:98.965},admin)).json();assert.equal(check.eligible,true);assert.equal(check.distanceKm,0);
- check=await (await post('stores/'+s.id+'/delivery/check',{lat:13.75,lng:100.5},admin)).json();assert.equal(check.eligible,false);
- assert.equal((await post('stores/'+s.id+'/delivery',{version:s.version-1,enabled:false,radiusKm:null},admin)).status,409);
- res=await post('stores/'+s.id,edit(s,{lat:18.789}),merchant);assert.equal(res.status,201);s=await res.json();assert.equal(s.deliveryEnabled,false);assert.equal(s.radiusKm,null);
- s=await (await post('stores/'+s.id,edit(s,{active:false}),merchant)).json();assert.equal((await post('stores/'+s.id+'/delivery',{version:s.version,enabled:true,radiusKm:3},admin)).status,400);
+test('demo endpoints removed; anonymous and forged role denied', async () => {
+  assert.equal((await get('demo/accounts')).status, 404);
+  assert.equal((await post('demo/session', { accountId: 'super' })).status, 404);
+  assert.equal(
+    (await fetch(base + 'stores', { headers: { 'X-Role': 'SUPER_ADMIN' } })).status,
+    401,
+  );
 });
-test('database forbids non-food delivery and concurrent saves cannot overwrite each other',async()=>{
- await assert.rejects(db.query('UPDATE stores SET delivery_enabled=true,delivery_radius_km=3,latitude=18,longitude=98 WHERE id=$1',[stores[1]]),{code:'23514'});
- const root=await login(users.SUPER_ADMIN.email);const s=await (await get('stores/'+stores[1],root)).json();
- const responses=await Promise.all([post('stores/'+s.id,edit(s,{name:'Writer A'}),root),post('stores/'+s.id,edit(s,{name:'Writer B'}),root)]);assert.deepEqual(responses.map(r=>r.status).sort(),[201,409]);
- const admin=await login(users.ADMIN.email);const areas=await (await get('areas',admin)).json();assert.ok(areas.every(a=>a.provinceId==='50'));
+test('registration persists hash, creates USER only, rejects role and store injection', async () => {
+  const input = { name: 'สมาชิกใหม่', email: 'New@Example.test', password };
+  const bad = await post('auth/register', { ...input, role: 'SUPER_ADMIN', storeIds: [stores[0]] });
+  assert.equal(bad.status, 400);
+  const res = await post('auth/register', input);
+  assert.equal(res.status, 201);
+  const a = await res.json();
+  assert.equal(a.role, 'USER');
+  assert.deepEqual(a.storeIds, []);
+  assert.match(res.headers.get('set-cookie'), /HttpOnly/);
+  assert.match(res.headers.get('set-cookie'), /SameSite=Strict/);
+  const row = (await db.query('SELECT email,password_hash FROM app_users WHERE id=$1', [a.id]))
+    .rows[0];
+  assert.equal(row.email, 'new@example.test');
+  assert.notEqual(row.password_hash, password);
+  assert.ok(await passwords.verifyPassword(password, row.password_hash));
+  assert.equal(
+    (await post('auth/register', { ...input, email: ' new@example.test ' })).status,
+    409,
+  );
 });
-test('merchant registration: ownership, draft privacy, scope, corrections and atomic approval',async()=>{
- const applicant=await login(users.USER.email),admin=await login(users.ADMIN.email),other=await login(users.MERCHANT.email);
- const input={name:'คำขอร้านชุมชน',category:'food',address:'123 ถนนทดสอบ',phone:'0812345678',subdistrictId:'t2'};
- assert.equal((await post('applications',{...input,status:'approved'},applicant)).status,400);
- let res=await post('applications',input,applicant);assert.equal(res.status,201);let a=await res.json();
- assert.equal((await post('applications',input,applicant)).status,409);
- assert.equal((await get('applications/review',applicant)).status,403);
- assert.equal((await get('applications/'+a.id+'/history',other)).status,403);
- assert.equal((await post('applications/'+a.id+'/submit',{version:a.version},other)).status,403);
- assert.ok(!(await (await get('applications/review',admin)).json()).some(x=>x.id===a.id));
- a=await (await post('applications/'+a.id+'/submit',{version:a.version},applicant)).json();
- assert.equal((await post('applications/'+a.id+'/review',{version:a.version,decision:'approved',reason:'ตรวจข้อมูลครบแล้ว'},admin)).status,403);
- const root=await login(users.SUPER_ADMIN.email);
- a=await (await post('applications/'+a.id+'/review',{version:a.version,decision:'changes_requested',reason:'กรุณาแก้ไขพื้นที่ร้าน'},root)).json();assert.equal(a.status,'changes_requested');
- a=await (await post('applications/'+a.id,{...input,subdistrictId:'t1',version:a.version},applicant)).json();
- a=await (await post('applications/'+a.id+'/submit',{version:a.version},applicant)).json();
- assert.equal((await post('applications/'+a.id,{...input,version:a.version},applicant)).status,409);
- assert.equal((await (await get('me',applicant)).json()).role,'USER');
- assert.equal((await post('applications/'+a.id+'/review',{version:a.version,decision:'approved',reason:''},admin)).status,400);
- const results=await Promise.all([post('applications/'+a.id+'/review',{version:a.version,decision:'approved',reason:'ตรวจข้อมูลเรียบร้อย'},admin),post('applications/'+a.id+'/review',{version:a.version,decision:'approved',reason:'ตรวจข้อมูลเรียบร้อย'},root)]);assert.deepEqual(results.map(r=>r.status).sort(),[201,409]);
- a=await results.find(r=>r.status===201).json();assert.equal(a.status,'approved');assert.ok(a.storeId);
- assert.equal((await (await get('me',applicant)).json()).role,'MERCHANT');
- const store=await (await get('stores/'+a.storeId,applicant)).json();assert.equal(store.active,false);assert.equal(store.deliveryEnabled,false);
- assert.equal((await db.query('SELECT count(*) FROM store_memberships WHERE store_id=$1',[a.storeId])).rows[0].count,'1');
- const h=await (await get('applications/'+a.id+'/history',applicant)).json();assert.equal(h.length,6);
- assert.equal((await post('applications/'+a.id+'/submit',{version:a.version},applicant)).status,409);
- await stop();await start();assert.equal((await (await get('applications',applicant)).json())[0].storeId,a.storeId);
+test('login normalizes email; incorrect and nonexistent credentials have identical responses', async () => {
+  const a = await post('auth/login', {
+    email: 'user@test.invalid',
+    password: 'incorrect-password',
+  });
+  const b = await post('auth/login', {
+    email: 'absent@test.invalid',
+    password: 'incorrect-password',
+  });
+  assert.equal(a.status, 401);
+  assert.equal(b.status, 401);
+  assert.equal((await a.json()).message, (await b.json()).message);
+  const cookie = await login(' USER@TEST.INVALID ');
+  assert.equal((await (await get('me', cookie)).json()).role, 'USER');
+  assert.deepEqual(await (await get('stores', cookie)).json(), []);
 });
-test('rejection is terminal and self-review cannot grant a store',async()=>{
- const applicant=await login(users.MERCHANT.email),admin=await login(users.ADMIN.email);
- const input={name:'ขอเปิดสาขา',category:'craft',address:'123 ที่อยู่สาขา',phone:'0812345678',subdistrictId:'t1'};
- let a=await (await post('applications',input,applicant)).json();a=await (await post('applications/'+a.id+'/submit',{version:a.version},applicant)).json();
- await db.query("INSERT INTO system_roles VALUES($1,'SUPER_ADMIN')",[users.MERCHANT.id]);
- assert.equal((await post('applications/'+a.id+'/review',{version:a.version,decision:'approved',reason:'พยายามอนุมัติเอง'},applicant)).status,403);
- await db.query('DELETE FROM system_roles WHERE user_id=$1',[users.MERCHANT.id]);
- a=await (await post('applications/'+a.id+'/review',{version:a.version,decision:'rejected',reason:'ข้อมูลยังไม่ผ่านเกณฑ์'},admin)).json();assert.equal(a.status,'rejected');assert.equal(a.storeId,null);
- assert.equal((await post('applications/'+a.id,{...input,version:a.version},applicant)).status,409);
+test('merchant cannot cross stores; logout invalidates DB session', async () => {
+  const cookie = await login(users.MERCHANT.email);
+  assert.equal((await get('stores/' + stores[2], cookie)).status, 403);
+  assert.deepEqual(
+    (await (await get('stores', cookie)).json()).map((s) => s.id),
+    [stores[0]],
+  );
+  assert.equal((await get('food-delivery', cookie)).status, 403);
+  await post('logout', {}, cookie);
+  assert.equal((await get('me', cookie)).status, 401);
 });
-let productMerchant,productAdmin,productStore,product;
-const productFields={name:'ข้าวสารชุมชน',description:'อาหารแห้งส่งพัสดุ',category:'food',fulfillment:'parcel_delivery',priceSatang:12550,active:true};
-const productEditBody=(p,changes={})=>({name:p.name,description:p.description,category:p.category,fulfillment:p.fulfillment,priceSatang:p.priceSatang,active:p.active,version:p.version,...changes});
-test('product CRUD scopes, money validation and visibility independent of food zones',async()=>{
- productMerchant=await login(users.MERCHANT.email);productAdmin=await login(users.ADMIN.email);
- productStore=await (await post('stores',{...newStore,name:'ร้านทดสอบสินค้า'},productMerchant)).json();
- assert.equal((await post('stores/'+productStore.id+'/products',{...productFields,initialStock:5})).status,401);
- assert.equal((await post('stores/'+stores[2]+'/products',{...productFields,initialStock:5},productMerchant)).status,403);
- assert.equal((await post('stores/'+productStore.id+'/products',{...productFields,priceSatang:0,initialStock:5},productMerchant)).status,400);
- assert.equal((await post('stores/'+productStore.id+'/products',{...productFields,priceSatang:1.5,initialStock:5},productMerchant)).status,400);
- let res=await post('stores/'+productStore.id+'/products',{...productFields,initialStock:5},productMerchant);assert.equal(res.status,201);product=await res.json();
- assert.ok((await (await get('catalog')).json()).some(p=>p.id===product.id));
- assert.equal((await (await post('catalog/'+product.id+'/availability',{})).json()).eligible,true);
- assert.equal((await post('products/'+product.id,{...productEditBody(product),storeId:stores[2]},productMerchant)).status,400);
- product=await (await post('products/'+product.id,productEditBody(product,{active:false}),productMerchant)).json();
- assert.ok(!(await (await get('catalog')).json()).some(p=>p.id===product.id));
- assert.equal((await post('catalog/'+product.id+'/availability',{})).status,404);
- product=await (await post('products/'+product.id,productEditBody(product,{active:true}),productMerchant)).json();
+test('admin scope and food-only delivery; super admin sees all stores', async () => {
+  const cookie = await login(users.ADMIN.email);
+  assert.equal((await get('stores/' + stores[2], cookie)).status, 403);
+  assert.deepEqual(
+    (await (await get('food-delivery', cookie)).json()).map((s) => s.id),
+    [stores[0]],
+  );
+  const root = await login(users.SUPER_ADMIN.email);
+  assert.equal((await (await get('stores', root)).json()).length, 3);
+  assert.equal((await (await get('food-delivery', root)).json()).length, 2);
 });
-test('stock prevents negatives, concurrent overwrite and duplicate retry; audit persists',async()=>{
- assert.equal((await post('products/'+product.id+'/stock',{version:product.version,delta:-6,reason:'ทดสอบติดลบ',requestKey:randomUUID()},productMerchant)).status,400);
- const body={version:product.version,delta:3,reason:'รับสินค้าเพิ่ม',requestKey:randomUUID()};const results=await Promise.all([post('products/'+product.id+'/stock',body,productMerchant),post('products/'+product.id+'/stock',body,productMerchant)]);assert.ok(results.every(r=>r.status===201));
- product=(await (await get('stores/'+productStore.id+'/products',productMerchant)).json()).find(p=>p.id===product.id);assert.equal(product.stock,8);
- assert.equal((await post('products/'+product.id+'/stock',{...body,delta:4},productMerchant)).status,409);
- const concurrent=await Promise.all([post('products/'+product.id+'/stock',{version:product.version,delta:1,reason:'นับสต๊อกเพิ่ม',requestKey:randomUUID()},productMerchant),post('products/'+product.id+'/stock',{version:product.version,delta:-1,reason:'นับสต๊อกลด',requestKey:randomUUID()},productMerchant)]);assert.deepEqual(concurrent.map(r=>r.status).sort(),[201,409]);
- const history=await (await get('products/'+product.id+'/history',productMerchant)).json();assert.equal(history.filter(h=>h.reason==='รับสินค้าเพิ่ม').length,1);assert.ok(history.some(h=>h.actor&&h.after.stock===8));
- await stop();await start();product=(await (await get('stores/'+productStore.id+'/products',productMerchant)).json()).find(p=>p.id===product.id);assert.ok([7,9].includes(product.stock));
+test('permission changes take effect in existing sessions', async () => {
+  const cookie = await login(users.ADMIN.email);
+  await db.query('DELETE FROM admin_province_scopes WHERE user_id=$1', [users.ADMIN.id]);
+  assert.deepEqual(await (await get('stores', cookie)).json(), []);
+  await db.query("INSERT INTO admin_province_scopes VALUES($1,'50')", [users.ADMIN.id]);
 });
-test('image validation, safe encoding, visibility, cross-store access and removal',async()=>{
- const sharp=(await import('sharp')).default;const image=await sharp({create:{width:32,height:32,channels:3,background:'#00695c'}}).png().toBuffer();
- for(const data of [Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64'),Buffer.from('not-an-image').toString('base64'),Buffer.alloc(2*1024*1024+1).toString('base64')])assert.equal((await post('products/'+product.id+'/image',{version:product.version,data},productMerchant)).status,400);
- let response=await post('products/'+product.id+'/image',{version:product.version,data:image.toString('base64')},productMerchant);assert.equal(response.status,201);product=await response.json();assert.equal(product.hasImage,true);
- const publicImage=await get('products/'+product.id+'/image');assert.equal(publicImage.status,200);assert.match(publicImage.headers.get('content-type'),/image\/webp/);const metadata=await sharp(Buffer.from(await publicImage.arrayBuffer())).metadata();assert.equal(metadata.format,'webp');assert.equal(metadata.exif,undefined);
- product=await (await post('products/'+product.id,productEditBody(product,{active:false}),productMerchant)).json();assert.equal((await get('products/'+product.id+'/image')).status,404);assert.equal((await get('products/'+product.id+'/image',productMerchant)).status,200);
- const outsider=await login(users.USER.email);assert.equal((await get('products/'+product.id+'/image',outsider)).status,404);assert.equal((await post('products/'+product.id+'/image',{version:product.version,data:image.toString('base64')},outsider)).status,403);
- product=await (await post('products/'+product.id+'/image',{version:product.version,data:null},productMerchant)).json();assert.equal(product.hasImage,false);
+test('sessions and accounts survive API restart', async () => {
+  const cookie = await login('new@example.test');
+  await stop();
+  await start();
+  assert.equal((await (await get('me', cookie)).json()).name, 'สมาชิกใหม่');
 });
-test('instant food only uses live zone; closed shop and zero stock are not public',async()=>{
- product=await (await post('products/'+product.id,productEditBody(product,{active:true,fulfillment:'instant_food_delivery'}),productMerchant)).json();
- assert.ok(!(await (await get('catalog')).json()).some(p=>p.id===product.id));
- productStore=await (await post('stores/'+productStore.id+'/delivery',{version:productStore.version,enabled:true,radiusKm:3},productAdmin)).json();assert.ok((await (await get('catalog')).json()).some(p=>p.id===product.id));
- assert.equal((await (await post('catalog/'+product.id+'/availability',{point:{lat:18.788,lng:98.965}})).json()).eligible,true);
- assert.equal((await (await post('catalog/'+product.id+'/availability',{point:{lat:13.75,lng:100.5}})).json()).eligible,false);
- assert.equal((await post('products/'+product.id,productEditBody(product,{category:'craft'}),productMerchant)).status,400);
- productStore=await (await post('stores/'+productStore.id,edit(productStore,{active:false}),productMerchant)).json();assert.ok(!(await (await get('catalog')).json()).some(p=>p.id===product.id));
- productStore=await (await post('stores/'+productStore.id,edit(productStore,{active:true}),productMerchant)).json();product=await (await post('products/'+product.id,productEditBody(product,{fulfillment:'pickup'}),productMerchant)).json();
- product=await (await post('products/'+product.id+'/stock',{version:product.version,delta:-product.stock,reason:'สินค้าหมดทดสอบ',requestKey:randomUUID()},productMerchant)).json();assert.equal(product.stock,0);assert.ok(!(await (await get('catalog')).json()).some(p=>p.id===product.id));
+test('password change revokes every device and old password', async () => {
+  const cookie = await login('new@example.test');
+  const second = await login('new@example.test');
+  assert.equal(
+    (
+      await post(
+        'auth/password',
+        { currentPassword: 'wrong-password', newPassword: 'Replacement-password-123' },
+        cookie,
+      )
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await post(
+        'auth/password',
+        { currentPassword: password, newPassword: 'Replacement-password-123' },
+        cookie,
+      )
+    ).status,
+    201,
+  );
+  assert.equal((await get('me', cookie)).status, 401);
+  assert.equal((await get('me', second)).status, 401);
+  assert.equal((await post('auth/login', { email: 'new@example.test', password })).status, 401);
+  await login('new@example.test', 'Replacement-password-123');
 });
-let orderBuyer,orderedProduct,pendingOrder,checkoutBody;
-test('checkout validates price, identity and stock; same request creates only one order',async()=>{
- orderBuyer=await login(users.USER.email);
- orderedProduct=await (await post('stores/'+productStore.id+'/products',{...productFields,name:'สินค้าเพื่อสั่งซื้อ',fulfillment:'pickup',initialStock:3},productMerchant)).json();
- checkoutBody={storeId:productStore.id,fulfillment:'pickup',items:[{productId:orderedProduct.id,quantity:2,expectedPriceSatang:12550}],recipient:'ลูกค้าทดสอบ',phone:'0812345678',address:'',requestKey:randomUUID()};
- assert.equal((await post('orders',checkoutBody)).status,401);
- assert.equal((await post('orders',{...checkoutBody,subtotalSatang:1},orderBuyer)).status,400);
- assert.equal((await post('orders',{...checkoutBody,items:[{...checkoutBody.items[0],expectedPriceSatang:1}]},orderBuyer)).status,409);
- assert.equal((await post('orders',{...checkoutBody,items:[checkoutBody.items[0],checkoutBody.items[0]]},orderBuyer)).status,400);
- const res=await Promise.all([post('orders',checkoutBody,orderBuyer),post('orders',checkoutBody,orderBuyer)]);assert.ok(res.every(r=>r.status===201));const data=await Promise.all(res.map(r=>r.json()));assert.equal(data[0].id,data[1].id);pendingOrder=data[0];assert.equal(pendingOrder.subtotalSatang,25100);
- let row=(await db.query('SELECT stock,reserved FROM products WHERE id=$1',[orderedProduct.id])).rows[0];assert.deepEqual(row,{stock:1,reserved:2});
- assert.equal((await post('orders',{...checkoutBody,recipient:'ข้อมูลต่างกัน'},orderBuyer)).status,409);
- assert.equal((await post('orders',{...checkoutBody,requestKey:randomUUID()},orderBuyer)).status,409);
- assert.ok((await (await get('orders/my',orderBuyer)).json()).some(o=>o.id===pendingOrder.id));assert.ok(!(await (await get('orders/my',productMerchant)).json()).some(o=>o.id===pendingOrder.id));
- assert.ok(!(await (await get('orders/manage',orderBuyer)).json()).some(o=>o.id===pendingOrder.id));
+test('expired sessions and inactive accounts are rejected', async () => {
+  const cookie = await login(users.USER.email);
+  await db.query("UPDATE auth_sessions SET expires_at=now()-interval '1 second' WHERE user_id=$1", [
+    users.USER.id,
+  ]);
+  assert.equal((await get('me', cookie)).status, 401);
+  const second = await login(users.USER.email);
+  await db.query('UPDATE app_users SET active=false WHERE id=$1', [users.USER.id]);
+  assert.equal((await get('me', second)).status, 401);
+  assert.equal((await post('auth/login', { email: users.USER.email, password })).status, 401);
+  await db.query('UPDATE app_users SET active=true WHERE id=$1', [users.USER.id]);
 });
-test('only buyer can cancel pending order; stock restored once and receipt snapshots persist',async()=>{
- assert.equal((await post('orders/'+pendingOrder.id+'/actions',{version:pendingOrder.version,action:'cancel',reason:'ยกเลิกเองไม่ได้'},productMerchant)).status,403);
- await db.query("UPDATE products SET name='ชื่อใหม่หลังสั่ง',price_satang=20000 WHERE id=$1",[orderedProduct.id]);
- const receipt=(await (await get('orders/my',orderBuyer)).json()).find(o=>o.id===pendingOrder.id);assert.equal(receipt.items[0].name,'สินค้าเพื่อสั่งซื้อ');assert.equal(receipt.items[0].unitPriceSatang,12550);
- let res=await post('orders/'+pendingOrder.id+'/actions',{version:pendingOrder.version,action:'cancel',reason:'ลูกค้าเปลี่ยนใจ'},orderBuyer);assert.equal(res.status,201);pendingOrder=await res.json();
- assert.deepEqual((await db.query('SELECT stock,reserved FROM products WHERE id=$1',[orderedProduct.id])).rows[0],{stock:3,reserved:0});
- assert.equal((await post('orders/'+pendingOrder.id+'/actions',{version:pendingOrder.version,action:'cancel',reason:'ยกเลิกซ้ำ'},orderBuyer)).status,409);
- assert.deepEqual((await db.query('SELECT stock,reserved FROM products WHERE id=$1',[orderedProduct.id])).rows[0],{stock:3,reserved:0});
- await stop();await start();assert.equal((await (await get('orders/my',orderBuyer)).json()).find(o=>o.id===pendingOrder.id).status,'cancelled');
+test('CSRF origin, missing action header and short passwords rejected', async () => {
+  assert.equal(
+    (
+      await post('auth/login', { email: users.USER.email, password }, null, {
+        Origin: 'https://evil.example',
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post('auth/login', { email: users.USER.email, password }, null, {
+        'X-ThinThai-Action': '',
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await post('auth/register', { name: 'Test', email: 'short@test.invalid', password: 'short' }))
+      .status,
+    400,
+  );
 });
-test('competing checkouts cannot oversell; merchant accept/complete releases reservation',async()=>{
- const body={...checkoutBody,items:[{productId:orderedProduct.id,quantity:2,expectedPriceSatang:20000}]};
- const res=await Promise.all([post('orders',{...body,requestKey:randomUUID()},orderBuyer),post('orders',{...body,requestKey:randomUUID()},orderBuyer)]);assert.deepEqual(res.map(r=>r.status).sort(),[201,409]);let order=await res.find(r=>r.status===201).json();
- assert.equal((await post('orders/'+order.id+'/actions',{version:order.version,action:'accept',reason:'รับเองไม่ได้'},orderBuyer)).status,403);
- order=await (await post('orders/'+order.id+'/actions',{version:order.version,action:'accept',reason:'ร้านพร้อมจัดสินค้า'},productMerchant)).json();assert.equal(order.status,'accepted');
- assert.equal((await post('orders/'+order.id+'/actions',{version:order.version,action:'cancel',reason:'ยกเลิกหลังรับ'},orderBuyer)).status,409);
- order=await (await post('orders/'+order.id+'/actions',{version:order.version,action:'complete',reason:'ส่งมอบในแบบทดสอบ'},productMerchant)).json();assert.equal(order.status,'completed');assert.deepEqual((await db.query('SELECT stock,reserved FROM products WHERE id=$1',[orderedProduct.id])).rows[0],{stock:1,reserved:0});
+test('rate limiting is persisted and resists concurrent attempts', async () => {
+  const requests = await Promise.all(
+    Array.from({ length: 11 }, () =>
+      post('auth/login', { email: 'limit@test.invalid', password: 'wrong-password' }),
+    ),
+  );
+  assert.equal(requests.filter((r) => r.status === 429).length, 1);
+  await stop();
+  await start();
+  assert.equal(
+    (await post('auth/login', { email: 'limit@test.invalid', password: 'wrong-password' })).status,
+    429,
+  );
 });
-test('live food zone is checked at checkout; parcel unaffected; rejection returns capacity',async()=>{
- const food=await (await post('stores/'+productStore.id+'/products',{...productFields,name:'อาหารจัดส่ง',fulfillment:'instant_food_delivery',initialStock:2},productMerchant)).json();
- let store=await (await get('stores/'+productStore.id,productAdmin)).json();store=await (await post('stores/'+store.id+'/delivery',{version:store.version,enabled:true,radiusKm:3},productAdmin)).json();
- const body={storeId:store.id,fulfillment:'instant_food_delivery',items:[{productId:food.id,quantity:1,expectedPriceSatang:12550}],recipient:'ลูกค้าทดสอบ',phone:'0812345678',address:'123 ที่อยู่จัดส่ง',point:{lat:13.75,lng:100.5},requestKey:randomUUID()};
- assert.equal((await post('orders',body,orderBuyer)).status,409);
- let order=await (await post('orders',{...body,point:{lat:store.lat,lng:store.lng}},orderBuyer)).json();assert.equal(order.status,'placed');
- let p=(await (await get('stores/'+store.id+'/products',productMerchant)).json()).find(p=>p.id===food.id);
- assert.equal((await post('products/'+p.id+'/stock',{version:p.version,delta:999999,reason:'กันที่ไว้คืนสินค้า',requestKey:randomUUID()},productMerchant)).status,400);
- order=await (await post('orders/'+order.id+'/actions',{version:order.version,action:'reject',reason:'ร้านไม่พร้อมรับ'},productMerchant)).json();assert.equal(order.status,'rejected');assert.deepEqual((await db.query('SELECT stock,reserved FROM products WHERE id=$1',[food.id])).rows[0],{stock:2,reserved:0});
- const parcel=await (await post('stores/'+store.id+'/products',{...productFields,name:'อาหารแห้งพัสดุ',initialStock:1},productMerchant)).json();store=await (await post('stores/'+store.id+'/delivery',{version:store.version,enabled:false,radiusKm:null},productAdmin)).json();
- const r=await post('orders',{...body,fulfillment:'parcel_delivery',items:[{productId:parcel.id,quantity:1,expectedPriceSatang:12550}],requestKey:randomUUID()},orderBuyer);assert.equal(r.status,201);
+test('migration rerun preserves users and sessions; schema validates area relationships', async () => {
+  const before = (await db.query('SELECT count(*) FROM app_users')).rows[0].count;
+  const result = spawnSync(process.execPath, ['scripts/migrate.mjs', '--test'], {
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal((await db.query('SELECT count(*) FROM app_users')).rows[0].count, before);
+  await assert.rejects(db.query("INSERT INTO subdistricts VALUES('invalid','d1','75','bad')"), {
+    code: '23503',
+  });
 });
-let trip,departure,tripBuyer,tripMerchant,tripAdmin,tripRoot,bookingInput,bookingId;
-const tripFields={title:'เดินชุมชนทดสอบ',description:'กิจกรรมทดสอบ รวมผู้ดูแลและอุปกรณ์',meetingPoint:'ศาลาชุมชน ติดต่อผู้ดูแลก่อนเดินทาง',category:'culture',durationHours:3,priceSatang:65000,active:true};
-test('trip management scoped by store/province; public rounds require active provider and trip',async()=>{
- await db.query('DELETE FROM auth_rate_limits');tripBuyer=(await post('auth/register',{name:'ผู้จองทริป',email:'tripbuyer@test.invalid',password})).headers.get('set-cookie').split(';')[0];tripMerchant=await login(users.MERCHANT.email);tripAdmin=await login(users.ADMIN.email);tripRoot=await login(users.SUPER_ADMIN.email);
- assert.equal((await post('stores/'+stores[0]+'/trips',tripFields)).status,401);assert.equal((await post('stores/'+stores[0]+'/trips',tripFields,tripBuyer)).status,403);assert.equal((await post('stores/'+stores[2]+'/trips',tripFields,tripMerchant)).status,403);assert.equal((await post('stores/'+stores[2]+'/trips',tripFields,tripAdmin)).status,403);
- trip=await (await post('stores/'+productStore.id+'/trips',tripFields,tripMerchant)).json();assert.ok(trip.id);assert.ok(!(await (await get('trips')).json()).some(t=>t.id===trip.id));
- const startsAt=new Date(Date.now()+86400000).toISOString();assert.equal((await post('trips/'+trip.id+'/departures',{startsAt:new Date().toISOString(),capacity:3},tripMerchant)).status,400);departure=await (await post('trips/'+trip.id+'/departures',{startsAt,capacity:3},tripMerchant)).json();assert.ok(departure.id);assert.equal((await post('trips/'+trip.id+'/departures',{startsAt,capacity:3},tripMerchant)).status,409);
- assert.ok((await (await get('trips')).json()).some(t=>t.id===trip.id));await db.query('UPDATE stores SET active=false WHERE id=$1',[productStore.id]);assert.ok(!(await (await get('trips')).json()).some(t=>t.id===trip.id));await db.query('UPDATE stores SET active=true WHERE id=$1',[productStore.id]);
- assert.equal((await get('trips/manage',tripBuyer)).status,403);const managed=await (await get('trips/manage',tripMerchant)).json();assert.ok(managed.some(t=>t.id===trip.id));
+test('local auth cannot accidentally start in production', () => {
+  const p = spawnSync(process.execPath, ['apps/api/dist/main.js'], {
+    env: { ...process.env, NODE_ENV: 'production' },
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.equal(p.status, 1);
+  assert.match(p.stderr, /Local development only/);
 });
-test('booking validates authentication, quantity and price; replay is idempotent and personal data private',async()=>{
- bookingInput={departureId:departure.id,seats:2,expectedPriceSatang:65000,contactName:'ผู้เดินทางทดสอบ',phone:'0812345678',requestKey:randomUUID()};assert.equal((await post('bookings',bookingInput)).status,401);assert.equal((await post('bookings',{...bookingInput,seats:0},tripBuyer)).status,400);assert.equal((await post('bookings',{...bookingInput,expectedPriceSatang:1},tripBuyer)).status,409);
- const responses=await Promise.all([post('bookings',bookingInput,tripBuyer),post('bookings',bookingInput,tripBuyer)]);assert.deepEqual(responses.map(r=>r.status),[201,201]);const first=await responses[0].json(),second=await responses[1].json();assert.equal(first.id,second.id);bookingId=first.id;assert.equal((await db.query('SELECT used FROM departures WHERE id=$1',[departure.id])).rows[0].used,2);assert.equal((await post('bookings',{...bookingInput,contactName:'ชื่อใหม่'},tripBuyer)).status,409);
- assert.equal((await get('bookings/manage',tripBuyer)).status,403);assert.ok(!(await (await get('bookings/my',tripMerchant)).json()).some(b=>b.id===bookingId));assert.ok((await (await get('bookings/manage',tripAdmin)).json()).some(b=>b.id===bookingId));assert.ok((await (await get('bookings/manage',tripRoot)).json()).some(b=>b.id===bookingId));
- const publicTrip=(await (await get('trips')).json()).find(t=>t.id===trip.id);assert.equal(publicTrip.departures[0].remaining,1);assert.ok(!JSON.stringify(publicTrip).includes('0812345678'));
- const foreign=await (await post('stores/'+stores[2]+'/trips',tripFields,tripRoot)).json();const foreignRound=await (await post('trips/'+foreign.id+'/departures',{startsAt:new Date(Date.now()+86400000).toISOString(),capacity:2},tripRoot)).json();const foreignBooking=await (await post('bookings',{...bookingInput,departureId:foreignRound.id,seats:1,requestKey:randomUUID()},tripBuyer)).json();assert.ok(!(await (await get('bookings/manage',tripAdmin)).json()).some(b=>b.id===foreignBooking.id));assert.equal((await post('bookings/'+foreignBooking.id+'/actions',{version:1,action:'confirm',reason:'ข้ามพื้นที่'},tripAdmin)).status,403);
+const newStore = {
+  name: 'ร้านทดสอบใหม่',
+  address: '123 ถนนชุมชน',
+  category: 'food',
+  subdistrictId: 't1',
+  lat: 18.788,
+  lng: 98.965,
+  active: true,
+};
+const edit = (s, changes = {}) => ({
+  name: s.name,
+  address: s.address,
+  category: s.category,
+  subdistrictId: s.subdistrictId,
+  lat: s.lat,
+  lng: s.lng,
+  active: s.active,
+  version: s.version,
+  ...changes,
 });
-test('booking cancellation releases exactly once; snapshots survive edits and restart',async()=>{
- assert.equal((await post('bookings/'+bookingId+'/actions',{version:1,action:'cancel',reason:'ไม่ใช่เจ้าของ'},tripMerchant)).status,403);
- assert.equal((await post('trips/'+trip.id,{...tripFields,title:'ชื่อทริปใหม่',priceSatang:70000,version:1},tripMerchant)).status,201);assert.equal((await post('trips/'+trip.id,{...tripFields,version:1},tripMerchant)).status,409);
- await stop();await start();const mine=(await (await get('bookings/my',tripBuyer)).json()).find(b=>b.id===bookingId);assert.equal(mine.title,tripFields.title);assert.equal(mine.unitPriceSatang,65000);
- const result=await Promise.all([post('bookings/'+bookingId+'/actions',{version:1,action:'cancel',reason:'ยกเลิกทดสอบ'},tripBuyer),post('bookings/'+bookingId+'/actions',{version:1,action:'cancel',reason:'ยกเลิกทดสอบ'},tripBuyer)]);assert.deepEqual(result.map(r=>r.status).sort(),[201,409]);assert.equal((await db.query('SELECT used FROM departures WHERE id=$1',[departure.id])).rows[0].used,0);
+test('store create and edit enforce user/store/province scopes and strict fields', async () => {
+  const user = await login(users.USER.email),
+    merchant = await login(users.MERCHANT.email),
+    admin = await login(users.ADMIN.email);
+  assert.equal((await post('stores', newStore, user)).status, 403);
+  assert.equal((await post('stores', { ...newStore, subdistrictId: 't2' }, admin)).status, 403);
+  assert.equal(
+    (await post('stores', { ...newStore, deliveryEnabled: true }, merchant)).status,
+    400,
+  );
+  assert.equal((await post('stores', { ...newStore, lat: 91 }, merchant)).status, 400);
+  assert.equal((await post('stores', { ...newStore, lng: null }, merchant)).status, 400);
+  assert.equal(
+    (await post('stores', { ...newStore, subdistrictId: 'absent' }, merchant)).status,
+    400,
+  );
+  const res = await post('stores', newStore, merchant);
+  assert.equal(res.status, 201);
+  let s = await res.json();
+  assert.ok((await (await get('stores', merchant)).json()).some((row) => row.id === s.id));
+  assert.equal(
+    (await post('stores/' + stores[2], { ...newStore, version: 1 }, merchant)).status,
+    403,
+  );
+  assert.equal((await post('stores/' + s.id, edit(s, { subdistrictId: 't2' }), admin)).status, 403);
+  const updated = await post('stores/' + s.id, edit(s, { name: 'ชื่อใหม่' }), merchant);
+  assert.equal(updated.status, 201);
+  const next = await updated.json();
+  assert.equal(next.version, s.version + 1);
+  assert.equal(
+    (await post('stores/' + s.id, edit(s, { name: 'stale overwrite' }), merchant)).status,
+    409,
+  );
+  assert.equal((await (await get('stores/' + s.id, merchant)).json()).name, 'ชื่อใหม่');
+  const h = await (await get('stores/' + s.id + '/history', merchant)).json();
+  assert.equal(h.length, 2);
+  assert.equal(h[0].event, 'store.updated');
+  assert.equal(h[0].before.name, newStore.name);
+  assert.equal((await get('stores/' + s.id + '/history', user)).status, 403);
+  await stop();
+  await start();
+  assert.equal((await (await get('stores/' + s.id, merchant)).json()).name, 'ชื่อใหม่');
 });
-test('concurrent bookings cannot oversell; confirmation, supplier cancellation and completion are constrained',async()=>{
- const input={...bookingInput,expectedPriceSatang:70000};const results=await Promise.all([post('bookings',{...input,requestKey:randomUUID()},tripBuyer),post('bookings',{...input,requestKey:randomUUID()},tripBuyer)]);assert.deepEqual(results.map(r=>r.status).sort(),[201,409]);const b=await results.find(r=>r.status===201).json();
- assert.equal((await post('bookings/'+b.id+'/actions',{version:1,action:'confirm',reason:'ผู้ใช้ยืนยันเอง'},tripBuyer)).status,403);assert.equal((await post('bookings/'+b.id+'/actions',{version:1,action:'confirm',reason:'ผู้ให้บริการรับจอง'},tripMerchant)).status,201);assert.equal((await post('bookings/'+b.id+'/actions',{version:2,action:'cancel',reason:'ยกเลิกหลังยืนยัน'},tripBuyer)).status,409);assert.equal((await post('bookings/'+b.id+'/actions',{version:2,action:'complete',reason:'ยังไม่ถึงวัน'},tripMerchant)).status,409);assert.equal((await post('bookings/'+b.id+'/actions',{version:2,action:'reject',reason:'ผู้ให้บริการยกเลิก'},tripMerchant)).status,201);assert.equal((await db.query('SELECT used FROM departures WHERE id=$1',[departure.id])).rows[0].used,0);
- const next=await (await post('bookings',{...input,requestKey:randomUUID()},tripBuyer)).json();await post('bookings/'+next.id+'/actions',{version:1,action:'confirm',reason:'ยืนยันอีกรอบ'},tripMerchant);await db.query("UPDATE bookings SET starts_at=now()-interval '1 hour' WHERE id=$1",[next.id]);assert.equal((await post('bookings/'+next.id+'/actions',{version:2,action:'complete',reason:'เดินทางเสร็จแล้ว'},tripMerchant)).status,201);assert.equal((await db.query('SELECT used FROM departures WHERE id=$1',[departure.id])).rows[0].used,2);
+test('food delivery requires admin, active food store and pin; moving pin revokes approval', async () => {
+  const admin = await login(users.ADMIN.email),
+    merchant = await login(users.MERCHANT.email),
+    root = await login(users.SUPER_ADMIN.email);
+  let s = await (await get('stores/' + stores[0], admin)).json();
+  assert.equal(
+    (
+      await post(
+        'stores/' + s.id + '/delivery',
+        { version: s.version, enabled: true, radiusKm: 3 },
+        admin,
+      )
+    ).status,
+    400,
+  );
+  s = await (await post('stores/' + s.id, edit(s, { lat: 18.788, lng: 98.965 }), merchant)).json();
+  assert.equal(
+    (
+      await post(
+        'stores/' + s.id + '/delivery',
+        { version: s.version, enabled: true, radiusKm: 3 },
+        merchant,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(
+        'stores/' + stores[2] + '/delivery',
+        { version: 1, enabled: true, radiusKm: 3 },
+        admin,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(
+        'stores/' + stores[1] + '/delivery',
+        { version: 1, enabled: true, radiusKm: 3 },
+        root,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(
+        'stores/' + s.id + '/delivery',
+        { version: s.version, enabled: true, radiusKm: 31 },
+        admin,
+      )
+    ).status,
+    400,
+  );
+  let res = await post(
+    'stores/' + s.id + '/delivery',
+    { version: s.version, enabled: true, radiusKm: 3 },
+    admin,
+  );
+  assert.equal(res.status, 201);
+  s = await res.json();
+  let check = await (
+    await post('stores/' + s.id + '/delivery/check', { lat: 18.788, lng: 98.965 }, admin)
+  ).json();
+  assert.equal(check.eligible, true);
+  assert.equal(check.distanceKm, 0);
+  check = await (
+    await post('stores/' + s.id + '/delivery/check', { lat: 13.75, lng: 100.5 }, admin)
+  ).json();
+  assert.equal(check.eligible, false);
+  assert.equal(
+    (
+      await post(
+        'stores/' + s.id + '/delivery',
+        { version: s.version - 1, enabled: false, radiusKm: null },
+        admin,
+      )
+    ).status,
+    409,
+  );
+  res = await post('stores/' + s.id, edit(s, { lat: 18.789 }), merchant);
+  assert.equal(res.status, 201);
+  s = await res.json();
+  assert.equal(s.deliveryEnabled, false);
+  assert.equal(s.radiusKm, null);
+  s = await (await post('stores/' + s.id, edit(s, { active: false }), merchant)).json();
+  assert.equal(
+    (
+      await post(
+        'stores/' + s.id + '/delivery',
+        { version: s.version, enabled: true, radiusKm: 3 },
+        admin,
+      )
+    ).status,
+    400,
+  );
 });
-test('closed/past rounds and inactive trips reject new bookings without cancelling existing reservations',async()=>{
- const input={...bookingInput,expectedPriceSatang:70000,seats:1,requestKey:randomUUID()};let d=(await db.query('SELECT version FROM departures WHERE id=$1',[departure.id])).rows[0];assert.equal((await post('departures/'+departure.id,{version:d.version,active:false},tripMerchant)).status,201);assert.equal((await post('bookings',input,tripBuyer)).status,409);assert.ok(!(await (await get('trips')).json()).some(t=>t.id===trip.id));d=(await db.query('SELECT version FROM departures WHERE id=$1',[departure.id])).rows[0];await post('departures/'+departure.id,{version:d.version,active:true},tripMerchant);await db.query('UPDATE trips SET active=false WHERE id=$1',[trip.id]);assert.equal((await post('bookings',input,tripBuyer)).status,409);await db.query('UPDATE trips SET active=true WHERE id=$1',[trip.id]);await db.query("UPDATE departures SET starts_at=now()-interval '1 hour' WHERE id=$1",[departure.id]);assert.equal((await post('bookings',input,tripBuyer)).status,409);assert.equal((await db.query('SELECT used FROM departures WHERE id=$1',[departure.id])).rows[0].used,2);
+test('database forbids non-food delivery and concurrent saves cannot overwrite each other', async () => {
+  await assert.rejects(
+    db.query(
+      'UPDATE stores SET delivery_enabled=true,delivery_radius_km=3,latitude=18,longitude=98 WHERE id=$1',
+      [stores[1]],
+    ),
+    { code: '23514' },
+  );
+  const root = await login(users.SUPER_ADMIN.email);
+  const s = await (await get('stores/' + stores[1], root)).json();
+  const responses = await Promise.all([
+    post('stores/' + s.id, edit(s, { name: 'Writer A' }), root),
+    post('stores/' + s.id, edit(s, { name: 'Writer B' }), root),
+  ]);
+  assert.deepEqual(responses.map((r) => r.status).sort(), [201, 409]);
+  const admin = await login(users.ADMIN.email);
+  const areas = await (await get('areas', admin)).json();
+  assert.ok(areas.every((a) => a.provinceId === '50'));
+});
+test('merchant registration: ownership, draft privacy, scope, corrections and atomic approval', async () => {
+  const applicant = await login(users.USER.email),
+    admin = await login(users.ADMIN.email),
+    other = await login(users.MERCHANT.email);
+  const input = {
+    name: 'คำขอร้านชุมชน',
+    category: 'food',
+    address: '123 ถนนทดสอบ',
+    phone: '0812345678',
+    subdistrictId: 't2',
+  };
+  assert.equal(
+    (await post('applications', { ...input, status: 'approved' }, applicant)).status,
+    400,
+  );
+  let res = await post('applications', input, applicant);
+  assert.equal(res.status, 201);
+  let a = await res.json();
+  assert.equal((await post('applications', input, applicant)).status, 409);
+  assert.equal((await get('applications/review', applicant)).status, 403);
+  assert.equal((await get('applications/' + a.id + '/history', other)).status, 403);
+  assert.equal(
+    (await post('applications/' + a.id + '/submit', { version: a.version }, other)).status,
+    403,
+  );
+  assert.ok(!(await (await get('applications/review', admin)).json()).some((x) => x.id === a.id));
+  a = await (
+    await post('applications/' + a.id + '/submit', { version: a.version }, applicant)
+  ).json();
+  assert.equal(
+    (
+      await post(
+        'applications/' + a.id + '/review',
+        { version: a.version, decision: 'approved', reason: 'ตรวจข้อมูลครบแล้ว' },
+        admin,
+      )
+    ).status,
+    403,
+  );
+  const root = await login(users.SUPER_ADMIN.email);
+  a = await (
+    await post(
+      'applications/' + a.id + '/review',
+      { version: a.version, decision: 'changes_requested', reason: 'กรุณาแก้ไขพื้นที่ร้าน' },
+      root,
+    )
+  ).json();
+  assert.equal(a.status, 'changes_requested');
+  a = await (
+    await post(
+      'applications/' + a.id,
+      { ...input, subdistrictId: 't1', version: a.version },
+      applicant,
+    )
+  ).json();
+  a = await (
+    await post('applications/' + a.id + '/submit', { version: a.version }, applicant)
+  ).json();
+  assert.equal(
+    (await post('applications/' + a.id, { ...input, version: a.version }, applicant)).status,
+    409,
+  );
+  assert.equal((await (await get('me', applicant)).json()).role, 'USER');
+  assert.equal(
+    (
+      await post(
+        'applications/' + a.id + '/review',
+        { version: a.version, decision: 'approved', reason: '' },
+        admin,
+      )
+    ).status,
+    400,
+  );
+  const results = await Promise.all([
+    post(
+      'applications/' + a.id + '/review',
+      { version: a.version, decision: 'approved', reason: 'ตรวจข้อมูลเรียบร้อย' },
+      admin,
+    ),
+    post(
+      'applications/' + a.id + '/review',
+      { version: a.version, decision: 'approved', reason: 'ตรวจข้อมูลเรียบร้อย' },
+      root,
+    ),
+  ]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
+  a = await results.find((r) => r.status === 201).json();
+  assert.equal(a.status, 'approved');
+  assert.ok(a.storeId);
+  assert.equal((await (await get('me', applicant)).json()).role, 'MERCHANT');
+  const store = await (await get('stores/' + a.storeId, applicant)).json();
+  assert.equal(store.active, false);
+  assert.equal(store.deliveryEnabled, false);
+  assert.equal(
+    (await db.query('SELECT count(*) FROM store_memberships WHERE store_id=$1', [a.storeId]))
+      .rows[0].count,
+    '1',
+  );
+  const h = await (await get('applications/' + a.id + '/history', applicant)).json();
+  assert.equal(h.length, 6);
+  assert.equal(
+    (await post('applications/' + a.id + '/submit', { version: a.version }, applicant)).status,
+    409,
+  );
+  await stop();
+  await start();
+  assert.equal((await (await get('applications', applicant)).json())[0].storeId, a.storeId);
+});
+test('rejection is terminal and self-review cannot grant a store', async () => {
+  const applicant = await login(users.MERCHANT.email),
+    admin = await login(users.ADMIN.email);
+  const input = {
+    name: 'ขอเปิดสาขา',
+    category: 'craft',
+    address: '123 ที่อยู่สาขา',
+    phone: '0812345678',
+    subdistrictId: 't1',
+  };
+  let a = await (await post('applications', input, applicant)).json();
+  a = await (
+    await post('applications/' + a.id + '/submit', { version: a.version }, applicant)
+  ).json();
+  await db.query("INSERT INTO system_roles VALUES($1,'SUPER_ADMIN')", [users.MERCHANT.id]);
+  assert.equal(
+    (
+      await post(
+        'applications/' + a.id + '/review',
+        { version: a.version, decision: 'approved', reason: 'พยายามอนุมัติเอง' },
+        applicant,
+      )
+    ).status,
+    403,
+  );
+  await db.query('DELETE FROM system_roles WHERE user_id=$1', [users.MERCHANT.id]);
+  a = await (
+    await post(
+      'applications/' + a.id + '/review',
+      { version: a.version, decision: 'rejected', reason: 'ข้อมูลยังไม่ผ่านเกณฑ์' },
+      admin,
+    )
+  ).json();
+  assert.equal(a.status, 'rejected');
+  assert.equal(a.storeId, null);
+  assert.equal(
+    (await post('applications/' + a.id, { ...input, version: a.version }, applicant)).status,
+    409,
+  );
+});
+let productMerchant, productAdmin, productStore, product;
+const productFields = {
+  name: 'ข้าวสารชุมชน',
+  description: 'อาหารแห้งส่งพัสดุ',
+  category: 'food',
+  fulfillment: 'parcel_delivery',
+  priceSatang: 12550,
+  active: true,
+};
+const productEditBody = (p, changes = {}) => ({
+  name: p.name,
+  description: p.description,
+  category: p.category,
+  fulfillment: p.fulfillment,
+  priceSatang: p.priceSatang,
+  active: p.active,
+  version: p.version,
+  ...changes,
+});
+test('product CRUD scopes, money validation and visibility independent of food zones', async () => {
+  productMerchant = await login(users.MERCHANT.email);
+  productAdmin = await login(users.ADMIN.email);
+  productStore = await (
+    await post('stores', { ...newStore, name: 'ร้านทดสอบสินค้า' }, productMerchant)
+  ).json();
+  assert.equal(
+    (await post('stores/' + productStore.id + '/products', { ...productFields, initialStock: 5 }))
+      .status,
+    401,
+  );
+  assert.equal(
+    (
+      await post(
+        'stores/' + stores[2] + '/products',
+        { ...productFields, initialStock: 5 },
+        productMerchant,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(
+        'stores/' + productStore.id + '/products',
+        { ...productFields, priceSatang: 0, initialStock: 5 },
+        productMerchant,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await post(
+        'stores/' + productStore.id + '/products',
+        { ...productFields, priceSatang: 1.5, initialStock: 5 },
+        productMerchant,
+      )
+    ).status,
+    400,
+  );
+  let res = await post(
+    'stores/' + productStore.id + '/products',
+    { ...productFields, initialStock: 5 },
+    productMerchant,
+  );
+  assert.equal(res.status, 201);
+  product = await res.json();
+  assert.ok((await (await get('catalog')).json()).some((p) => p.id === product.id));
+  assert.equal(
+    (await (await post('catalog/' + product.id + '/availability', {})).json()).eligible,
+    true,
+  );
+  assert.equal(
+    (
+      await post(
+        'products/' + product.id,
+        { ...productEditBody(product), storeId: stores[2] },
+        productMerchant,
+      )
+    ).status,
+    400,
+  );
+  product = await (
+    await post(
+      'products/' + product.id,
+      productEditBody(product, { active: false }),
+      productMerchant,
+    )
+  ).json();
+  assert.ok(!(await (await get('catalog')).json()).some((p) => p.id === product.id));
+  assert.equal((await post('catalog/' + product.id + '/availability', {})).status, 404);
+  product = await (
+    await post(
+      'products/' + product.id,
+      productEditBody(product, { active: true }),
+      productMerchant,
+    )
+  ).json();
+});
+test('stock prevents negatives, concurrent overwrite and duplicate retry; audit persists', async () => {
+  assert.equal(
+    (
+      await post(
+        'products/' + product.id + '/stock',
+        { version: product.version, delta: -6, reason: 'ทดสอบติดลบ', requestKey: randomUUID() },
+        productMerchant,
+      )
+    ).status,
+    400,
+  );
+  const body = {
+    version: product.version,
+    delta: 3,
+    reason: 'รับสินค้าเพิ่ม',
+    requestKey: randomUUID(),
+  };
+  const results = await Promise.all([
+    post('products/' + product.id + '/stock', body, productMerchant),
+    post('products/' + product.id + '/stock', body, productMerchant),
+  ]);
+  assert.ok(results.every((r) => r.status === 201));
+  product = (
+    await (await get('stores/' + productStore.id + '/products', productMerchant)).json()
+  ).find((p) => p.id === product.id);
+  assert.equal(product.stock, 8);
+  assert.equal(
+    (await post('products/' + product.id + '/stock', { ...body, delta: 4 }, productMerchant))
+      .status,
+    409,
+  );
+  const concurrent = await Promise.all([
+    post(
+      'products/' + product.id + '/stock',
+      { version: product.version, delta: 1, reason: 'นับสต๊อกเพิ่ม', requestKey: randomUUID() },
+      productMerchant,
+    ),
+    post(
+      'products/' + product.id + '/stock',
+      { version: product.version, delta: -1, reason: 'นับสต๊อกลด', requestKey: randomUUID() },
+      productMerchant,
+    ),
+  ]);
+  assert.deepEqual(concurrent.map((r) => r.status).sort(), [201, 409]);
+  const history = await (await get('products/' + product.id + '/history', productMerchant)).json();
+  assert.equal(history.filter((h) => h.reason === 'รับสินค้าเพิ่ม').length, 1);
+  assert.ok(history.some((h) => h.actor && h.after.stock === 8));
+  await stop();
+  await start();
+  product = (
+    await (await get('stores/' + productStore.id + '/products', productMerchant)).json()
+  ).find((p) => p.id === product.id);
+  assert.ok([7, 9].includes(product.stock));
+});
+test('image validation, safe encoding, visibility, cross-store access and removal', async () => {
+  const sharp = (await import('sharp')).default;
+  const image = await sharp({
+    create: { width: 32, height: 32, channels: 3, background: '#00695c' },
+  })
+    .png()
+    .toBuffer();
+  for (const data of [
+    Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64'),
+    Buffer.from('not-an-image').toString('base64'),
+    Buffer.alloc(2 * 1024 * 1024 + 1).toString('base64'),
+  ])
+    assert.equal(
+      (
+        await post(
+          'products/' + product.id + '/image',
+          { version: product.version, data },
+          productMerchant,
+        )
+      ).status,
+      400,
+    );
+  let response = await post(
+    'products/' + product.id + '/image',
+    { version: product.version, data: image.toString('base64') },
+    productMerchant,
+  );
+  assert.equal(response.status, 201);
+  product = await response.json();
+  assert.equal(product.hasImage, true);
+  const publicImage = await get('products/' + product.id + '/image');
+  assert.equal(publicImage.status, 200);
+  assert.match(publicImage.headers.get('content-type'), /image\/webp/);
+  const metadata = await sharp(Buffer.from(await publicImage.arrayBuffer())).metadata();
+  assert.equal(metadata.format, 'webp');
+  assert.equal(metadata.exif, undefined);
+  product = await (
+    await post(
+      'products/' + product.id,
+      productEditBody(product, { active: false }),
+      productMerchant,
+    )
+  ).json();
+  assert.equal((await get('products/' + product.id + '/image')).status, 404);
+  assert.equal((await get('products/' + product.id + '/image', productMerchant)).status, 200);
+  const outsider = await login(users.USER.email);
+  assert.equal((await get('products/' + product.id + '/image', outsider)).status, 404);
+  assert.equal(
+    (
+      await post(
+        'products/' + product.id + '/image',
+        { version: product.version, data: image.toString('base64') },
+        outsider,
+      )
+    ).status,
+    403,
+  );
+  product = await (
+    await post(
+      'products/' + product.id + '/image',
+      { version: product.version, data: null },
+      productMerchant,
+    )
+  ).json();
+  assert.equal(product.hasImage, false);
+});
+test('instant food only uses live zone; closed shop and zero stock are not public', async () => {
+  product = await (
+    await post(
+      'products/' + product.id,
+      productEditBody(product, { active: true, fulfillment: 'instant_food_delivery' }),
+      productMerchant,
+    )
+  ).json();
+  assert.ok(!(await (await get('catalog')).json()).some((p) => p.id === product.id));
+  productStore = await (
+    await post(
+      'stores/' + productStore.id + '/delivery',
+      { version: productStore.version, enabled: true, radiusKm: 3 },
+      productAdmin,
+    )
+  ).json();
+  assert.ok((await (await get('catalog')).json()).some((p) => p.id === product.id));
+  assert.equal(
+    (
+      await (
+        await post('catalog/' + product.id + '/availability', {
+          point: { lat: 18.788, lng: 98.965 },
+        })
+      ).json()
+    ).eligible,
+    true,
+  );
+  assert.equal(
+    (
+      await (
+        await post('catalog/' + product.id + '/availability', { point: { lat: 13.75, lng: 100.5 } })
+      ).json()
+    ).eligible,
+    false,
+  );
+  assert.equal(
+    (
+      await post(
+        'products/' + product.id,
+        productEditBody(product, { category: 'craft' }),
+        productMerchant,
+      )
+    ).status,
+    400,
+  );
+  productStore = await (
+    await post('stores/' + productStore.id, edit(productStore, { active: false }), productMerchant)
+  ).json();
+  assert.ok(!(await (await get('catalog')).json()).some((p) => p.id === product.id));
+  productStore = await (
+    await post('stores/' + productStore.id, edit(productStore, { active: true }), productMerchant)
+  ).json();
+  product = await (
+    await post(
+      'products/' + product.id,
+      productEditBody(product, { fulfillment: 'pickup' }),
+      productMerchant,
+    )
+  ).json();
+  product = await (
+    await post(
+      'products/' + product.id + '/stock',
+      {
+        version: product.version,
+        delta: -product.stock,
+        reason: 'สินค้าหมดทดสอบ',
+        requestKey: randomUUID(),
+      },
+      productMerchant,
+    )
+  ).json();
+  assert.equal(product.stock, 0);
+  assert.ok(!(await (await get('catalog')).json()).some((p) => p.id === product.id));
+});
+let orderBuyer, orderedProduct, pendingOrder, checkoutBody;
+test('checkout validates price, identity and stock; same request creates only one order', async () => {
+  orderBuyer = await login(users.USER.email);
+  orderedProduct = await (
+    await post(
+      'stores/' + productStore.id + '/products',
+      { ...productFields, name: 'สินค้าเพื่อสั่งซื้อ', fulfillment: 'pickup', initialStock: 3 },
+      productMerchant,
+    )
+  ).json();
+  checkoutBody = {
+    storeId: productStore.id,
+    fulfillment: 'pickup',
+    items: [{ productId: orderedProduct.id, quantity: 2, expectedPriceSatang: 12550 }],
+    recipient: 'ลูกค้าทดสอบ',
+    phone: '0812345678',
+    address: '',
+    requestKey: randomUUID(),
+  };
+  assert.equal((await post('orders', checkoutBody)).status, 401);
+  assert.equal(
+    (await post('orders', { ...checkoutBody, subtotalSatang: 1 }, orderBuyer)).status,
+    400,
+  );
+  assert.equal(
+    (
+      await post(
+        'orders',
+        { ...checkoutBody, items: [{ ...checkoutBody.items[0], expectedPriceSatang: 1 }] },
+        orderBuyer,
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await post(
+        'orders',
+        { ...checkoutBody, items: [checkoutBody.items[0], checkoutBody.items[0]] },
+        orderBuyer,
+      )
+    ).status,
+    400,
+  );
+  const res = await Promise.all([
+    post('orders', checkoutBody, orderBuyer),
+    post('orders', checkoutBody, orderBuyer),
+  ]);
+  assert.ok(res.every((r) => r.status === 201));
+  const data = await Promise.all(res.map((r) => r.json()));
+  assert.equal(data[0].id, data[1].id);
+  pendingOrder = data[0];
+  assert.equal(pendingOrder.subtotalSatang, 25100);
+  let row = (await db.query('SELECT stock,reserved FROM products WHERE id=$1', [orderedProduct.id]))
+    .rows[0];
+  assert.deepEqual(row, { stock: 1, reserved: 2 });
+  assert.equal(
+    (await post('orders', { ...checkoutBody, recipient: 'ข้อมูลต่างกัน' }, orderBuyer)).status,
+    409,
+  );
+  assert.equal(
+    (await post('orders', { ...checkoutBody, requestKey: randomUUID() }, orderBuyer)).status,
+    409,
+  );
+  assert.ok(
+    (await (await get('orders/my', orderBuyer)).json()).some((o) => o.id === pendingOrder.id),
+  );
+  assert.ok(
+    !(await (await get('orders/my', productMerchant)).json()).some((o) => o.id === pendingOrder.id),
+  );
+  assert.ok(
+    !(await (await get('orders/manage', orderBuyer)).json()).some((o) => o.id === pendingOrder.id),
+  );
+});
+test('only buyer can cancel pending order; stock restored once and receipt snapshots persist', async () => {
+  assert.equal(
+    (
+      await post(
+        'orders/' + pendingOrder.id + '/actions',
+        { version: pendingOrder.version, action: 'cancel', reason: 'ยกเลิกเองไม่ได้' },
+        productMerchant,
+      )
+    ).status,
+    403,
+  );
+  await db.query("UPDATE products SET name='ชื่อใหม่หลังสั่ง',price_satang=20000 WHERE id=$1", [
+    orderedProduct.id,
+  ]);
+  const receipt = (await (await get('orders/my', orderBuyer)).json()).find(
+    (o) => o.id === pendingOrder.id,
+  );
+  assert.equal(receipt.items[0].name, 'สินค้าเพื่อสั่งซื้อ');
+  assert.equal(receipt.items[0].unitPriceSatang, 12550);
+  let res = await post(
+    'orders/' + pendingOrder.id + '/actions',
+    { version: pendingOrder.version, action: 'cancel', reason: 'ลูกค้าเปลี่ยนใจ' },
+    orderBuyer,
+  );
+  assert.equal(res.status, 201);
+  pendingOrder = await res.json();
+  assert.deepEqual(
+    (await db.query('SELECT stock,reserved FROM products WHERE id=$1', [orderedProduct.id]))
+      .rows[0],
+    { stock: 3, reserved: 0 },
+  );
+  assert.equal(
+    (
+      await post(
+        'orders/' + pendingOrder.id + '/actions',
+        { version: pendingOrder.version, action: 'cancel', reason: 'ยกเลิกซ้ำ' },
+        orderBuyer,
+      )
+    ).status,
+    409,
+  );
+  assert.deepEqual(
+    (await db.query('SELECT stock,reserved FROM products WHERE id=$1', [orderedProduct.id]))
+      .rows[0],
+    { stock: 3, reserved: 0 },
+  );
+  await stop();
+  await start();
+  assert.equal(
+    (await (await get('orders/my', orderBuyer)).json()).find((o) => o.id === pendingOrder.id)
+      .status,
+    'cancelled',
+  );
+});
+test('competing checkouts cannot oversell; merchant accept/complete releases reservation', async () => {
+  const body = {
+    ...checkoutBody,
+    items: [{ productId: orderedProduct.id, quantity: 2, expectedPriceSatang: 20000 }],
+  };
+  const res = await Promise.all([
+    post('orders', { ...body, requestKey: randomUUID() }, orderBuyer),
+    post('orders', { ...body, requestKey: randomUUID() }, orderBuyer),
+  ]);
+  assert.deepEqual(res.map((r) => r.status).sort(), [201, 409]);
+  let order = await res.find((r) => r.status === 201).json();
+  assert.equal(
+    (
+      await post(
+        'orders/' + order.id + '/actions',
+        { version: order.version, action: 'accept', reason: 'รับเองไม่ได้' },
+        orderBuyer,
+      )
+    ).status,
+    403,
+  );
+  order = await (
+    await post(
+      'orders/' + order.id + '/actions',
+      { version: order.version, action: 'accept', reason: 'ร้านพร้อมจัดสินค้า' },
+      productMerchant,
+    )
+  ).json();
+  assert.equal(order.status, 'accepted');
+  assert.equal(
+    (
+      await post(
+        'orders/' + order.id + '/actions',
+        { version: order.version, action: 'cancel', reason: 'ยกเลิกหลังรับ' },
+        orderBuyer,
+      )
+    ).status,
+    409,
+  );
+  order = await (
+    await post(
+      'orders/' + order.id + '/actions',
+      { version: order.version, action: 'complete', reason: 'ส่งมอบในแบบทดสอบ' },
+      productMerchant,
+    )
+  ).json();
+  assert.equal(order.status, 'completed');
+  assert.deepEqual(
+    (await db.query('SELECT stock,reserved FROM products WHERE id=$1', [orderedProduct.id]))
+      .rows[0],
+    { stock: 1, reserved: 0 },
+  );
+});
+test('live food zone is checked at checkout; parcel unaffected; rejection returns capacity', async () => {
+  const food = await (
+    await post(
+      'stores/' + productStore.id + '/products',
+      {
+        ...productFields,
+        name: 'อาหารจัดส่ง',
+        fulfillment: 'instant_food_delivery',
+        initialStock: 2,
+      },
+      productMerchant,
+    )
+  ).json();
+  let store = await (await get('stores/' + productStore.id, productAdmin)).json();
+  store = await (
+    await post(
+      'stores/' + store.id + '/delivery',
+      { version: store.version, enabled: true, radiusKm: 3 },
+      productAdmin,
+    )
+  ).json();
+  const body = {
+    storeId: store.id,
+    fulfillment: 'instant_food_delivery',
+    items: [{ productId: food.id, quantity: 1, expectedPriceSatang: 12550 }],
+    recipient: 'ลูกค้าทดสอบ',
+    phone: '0812345678',
+    address: '123 ที่อยู่จัดส่ง',
+    point: { lat: 13.75, lng: 100.5 },
+    requestKey: randomUUID(),
+  };
+  assert.equal((await post('orders', body, orderBuyer)).status, 409);
+  let order = await (
+    await post('orders', { ...body, point: { lat: store.lat, lng: store.lng } }, orderBuyer)
+  ).json();
+  assert.equal(order.status, 'placed');
+  let p = (await (await get('stores/' + store.id + '/products', productMerchant)).json()).find(
+    (p) => p.id === food.id,
+  );
+  assert.equal(
+    (
+      await post(
+        'products/' + p.id + '/stock',
+        {
+          version: p.version,
+          delta: 999999,
+          reason: 'กันที่ไว้คืนสินค้า',
+          requestKey: randomUUID(),
+        },
+        productMerchant,
+      )
+    ).status,
+    400,
+  );
+  order = await (
+    await post(
+      'orders/' + order.id + '/actions',
+      { version: order.version, action: 'reject', reason: 'ร้านไม่พร้อมรับ' },
+      productMerchant,
+    )
+  ).json();
+  assert.equal(order.status, 'rejected');
+  assert.deepEqual(
+    (await db.query('SELECT stock,reserved FROM products WHERE id=$1', [food.id])).rows[0],
+    { stock: 2, reserved: 0 },
+  );
+  const parcel = await (
+    await post(
+      'stores/' + store.id + '/products',
+      { ...productFields, name: 'อาหารแห้งพัสดุ', initialStock: 1 },
+      productMerchant,
+    )
+  ).json();
+  store = await (
+    await post(
+      'stores/' + store.id + '/delivery',
+      { version: store.version, enabled: false, radiusKm: null },
+      productAdmin,
+    )
+  ).json();
+  const r = await post(
+    'orders',
+    {
+      ...body,
+      fulfillment: 'parcel_delivery',
+      items: [{ productId: parcel.id, quantity: 1, expectedPriceSatang: 12550 }],
+      requestKey: randomUUID(),
+    },
+    orderBuyer,
+  );
+  assert.equal(r.status, 201);
+});
+let trip, departure, tripBuyer, tripMerchant, tripAdmin, tripRoot, bookingInput, bookingId;
+const tripFields = {
+  title: 'เดินชุมชนทดสอบ',
+  description: 'กิจกรรมทดสอบ รวมผู้ดูแลและอุปกรณ์',
+  meetingPoint: 'ศาลาชุมชน ติดต่อผู้ดูแลก่อนเดินทาง',
+  category: 'culture',
+  durationHours: 3,
+  priceSatang: 65000,
+  active: true,
+};
+test('trip management scoped by store/province; public rounds require active provider and trip', async () => {
+  await db.query('DELETE FROM auth_rate_limits');
+  tripBuyer = (
+    await post('auth/register', { name: 'ผู้จองทริป', email: 'tripbuyer@test.invalid', password })
+  ).headers
+    .get('set-cookie')
+    .split(';')[0];
+  tripMerchant = await login(users.MERCHANT.email);
+  tripAdmin = await login(users.ADMIN.email);
+  tripRoot = await login(users.SUPER_ADMIN.email);
+  assert.equal((await post('stores/' + stores[0] + '/trips', tripFields)).status, 401);
+  assert.equal((await post('stores/' + stores[0] + '/trips', tripFields, tripBuyer)).status, 403);
+  assert.equal(
+    (await post('stores/' + stores[2] + '/trips', tripFields, tripMerchant)).status,
+    403,
+  );
+  assert.equal((await post('stores/' + stores[2] + '/trips', tripFields, tripAdmin)).status, 403);
+  trip = await (
+    await post('stores/' + productStore.id + '/trips', tripFields, tripMerchant)
+  ).json();
+  assert.ok(trip.id);
+  assert.ok(!(await (await get('trips')).json()).some((t) => t.id === trip.id));
+  const startsAt = new Date(Date.now() + 86400000).toISOString();
+  assert.equal(
+    (
+      await post(
+        'trips/' + trip.id + '/departures',
+        { startsAt: new Date().toISOString(), capacity: 3 },
+        tripMerchant,
+      )
+    ).status,
+    400,
+  );
+  departure = await (
+    await post('trips/' + trip.id + '/departures', { startsAt, capacity: 3 }, tripMerchant)
+  ).json();
+  assert.ok(departure.id);
+  assert.equal(
+    (await post('trips/' + trip.id + '/departures', { startsAt, capacity: 3 }, tripMerchant))
+      .status,
+    409,
+  );
+  assert.ok((await (await get('trips')).json()).some((t) => t.id === trip.id));
+  await db.query('UPDATE stores SET active=false WHERE id=$1', [productStore.id]);
+  assert.ok(!(await (await get('trips')).json()).some((t) => t.id === trip.id));
+  await db.query('UPDATE stores SET active=true WHERE id=$1', [productStore.id]);
+  assert.equal((await get('trips/manage', tripBuyer)).status, 403);
+  const managed = await (await get('trips/manage', tripMerchant)).json();
+  assert.ok(managed.some((t) => t.id === trip.id));
+});
+test('booking validates authentication, quantity and price; replay is idempotent and personal data private', async () => {
+  bookingInput = {
+    departureId: departure.id,
+    seats: 2,
+    expectedPriceSatang: 65000,
+    contactName: 'ผู้เดินทางทดสอบ',
+    phone: '0812345678',
+    requestKey: randomUUID(),
+  };
+  assert.equal((await post('bookings', bookingInput)).status, 401);
+  assert.equal((await post('bookings', { ...bookingInput, seats: 0 }, tripBuyer)).status, 400);
+  assert.equal(
+    (await post('bookings', { ...bookingInput, expectedPriceSatang: 1 }, tripBuyer)).status,
+    409,
+  );
+  const responses = await Promise.all([
+    post('bookings', bookingInput, tripBuyer),
+    post('bookings', bookingInput, tripBuyer),
+  ]);
+  assert.deepEqual(
+    responses.map((r) => r.status),
+    [201, 201],
+  );
+  const first = await responses[0].json(),
+    second = await responses[1].json();
+  assert.equal(first.id, second.id);
+  bookingId = first.id;
+  assert.equal(
+    (await db.query('SELECT used FROM departures WHERE id=$1', [departure.id])).rows[0].used,
+    2,
+  );
+  assert.equal(
+    (await post('bookings', { ...bookingInput, contactName: 'ชื่อใหม่' }, tripBuyer)).status,
+    409,
+  );
+  assert.equal((await get('bookings/manage', tripBuyer)).status, 403);
+  assert.ok(
+    !(await (await get('bookings/my', tripMerchant)).json()).some((b) => b.id === bookingId),
+  );
+  assert.ok(
+    (await (await get('bookings/manage', tripAdmin)).json()).some((b) => b.id === bookingId),
+  );
+  assert.ok(
+    (await (await get('bookings/manage', tripRoot)).json()).some((b) => b.id === bookingId),
+  );
+  const publicTrip = (await (await get('trips')).json()).find((t) => t.id === trip.id);
+  assert.equal(publicTrip.departures[0].remaining, 1);
+  assert.ok(!JSON.stringify(publicTrip).includes('0812345678'));
+  const foreign = await (await post('stores/' + stores[2] + '/trips', tripFields, tripRoot)).json();
+  const foreignRound = await (
+    await post(
+      'trips/' + foreign.id + '/departures',
+      { startsAt: new Date(Date.now() + 86400000).toISOString(), capacity: 2 },
+      tripRoot,
+    )
+  ).json();
+  const foreignBooking = await (
+    await post(
+      'bookings',
+      { ...bookingInput, departureId: foreignRound.id, seats: 1, requestKey: randomUUID() },
+      tripBuyer,
+    )
+  ).json();
+  assert.ok(
+    !(await (await get('bookings/manage', tripAdmin)).json()).some(
+      (b) => b.id === foreignBooking.id,
+    ),
+  );
+  assert.equal(
+    (
+      await post(
+        'bookings/' + foreignBooking.id + '/actions',
+        { version: 1, action: 'confirm', reason: 'ข้ามพื้นที่' },
+        tripAdmin,
+      )
+    ).status,
+    403,
+  );
+});
+test('booking cancellation releases exactly once; snapshots survive edits and restart', async () => {
+  assert.equal(
+    (
+      await post(
+        'bookings/' + bookingId + '/actions',
+        { version: 1, action: 'cancel', reason: 'ไม่ใช่เจ้าของ' },
+        tripMerchant,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(
+        'trips/' + trip.id,
+        { ...tripFields, title: 'ชื่อทริปใหม่', priceSatang: 70000, version: 1 },
+        tripMerchant,
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (await post('trips/' + trip.id, { ...tripFields, version: 1 }, tripMerchant)).status,
+    409,
+  );
+  await stop();
+  await start();
+  const mine = (await (await get('bookings/my', tripBuyer)).json()).find((b) => b.id === bookingId);
+  assert.equal(mine.title, tripFields.title);
+  assert.equal(mine.unitPriceSatang, 65000);
+  const result = await Promise.all([
+    post(
+      'bookings/' + bookingId + '/actions',
+      { version: 1, action: 'cancel', reason: 'ยกเลิกทดสอบ' },
+      tripBuyer,
+    ),
+    post(
+      'bookings/' + bookingId + '/actions',
+      { version: 1, action: 'cancel', reason: 'ยกเลิกทดสอบ' },
+      tripBuyer,
+    ),
+  ]);
+  assert.deepEqual(result.map((r) => r.status).sort(), [201, 409]);
+  assert.equal(
+    (await db.query('SELECT used FROM departures WHERE id=$1', [departure.id])).rows[0].used,
+    0,
+  );
+});
+test('concurrent bookings cannot oversell; confirmation, supplier cancellation and completion are constrained', async () => {
+  const input = { ...bookingInput, expectedPriceSatang: 70000 };
+  const results = await Promise.all([
+    post('bookings', { ...input, requestKey: randomUUID() }, tripBuyer),
+    post('bookings', { ...input, requestKey: randomUUID() }, tripBuyer),
+  ]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
+  const b = await results.find((r) => r.status === 201).json();
+  assert.equal(
+    (
+      await post(
+        'bookings/' + b.id + '/actions',
+        { version: 1, action: 'confirm', reason: 'ผู้ใช้ยืนยันเอง' },
+        tripBuyer,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(
+        'bookings/' + b.id + '/actions',
+        { version: 1, action: 'confirm', reason: 'ผู้ให้บริการรับจอง' },
+        tripMerchant,
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(
+        'bookings/' + b.id + '/actions',
+        { version: 2, action: 'cancel', reason: 'ยกเลิกหลังยืนยัน' },
+        tripBuyer,
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await post(
+        'bookings/' + b.id + '/actions',
+        { version: 2, action: 'complete', reason: 'ยังไม่ถึงวัน' },
+        tripMerchant,
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await post(
+        'bookings/' + b.id + '/actions',
+        { version: 2, action: 'reject', reason: 'ผู้ให้บริการยกเลิก' },
+        tripMerchant,
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (await db.query('SELECT used FROM departures WHERE id=$1', [departure.id])).rows[0].used,
+    0,
+  );
+  const next = await (
+    await post('bookings', { ...input, requestKey: randomUUID() }, tripBuyer)
+  ).json();
+  await post(
+    'bookings/' + next.id + '/actions',
+    { version: 1, action: 'confirm', reason: 'ยืนยันอีกรอบ' },
+    tripMerchant,
+  );
+  await db.query("UPDATE bookings SET starts_at=now()-interval '1 hour' WHERE id=$1", [next.id]);
+  assert.equal(
+    (
+      await post(
+        'bookings/' + next.id + '/actions',
+        { version: 2, action: 'complete', reason: 'เดินทางเสร็จแล้ว' },
+        tripMerchant,
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (await db.query('SELECT used FROM departures WHERE id=$1', [departure.id])).rows[0].used,
+    2,
+  );
+});
+test('closed/past rounds and inactive trips reject new bookings without cancelling existing reservations', async () => {
+  const input = { ...bookingInput, expectedPriceSatang: 70000, seats: 1, requestKey: randomUUID() };
+  let d = (await db.query('SELECT version FROM departures WHERE id=$1', [departure.id])).rows[0];
+  assert.equal(
+    (await post('departures/' + departure.id, { version: d.version, active: false }, tripMerchant))
+      .status,
+    201,
+  );
+  assert.equal((await post('bookings', input, tripBuyer)).status, 409);
+  assert.ok(!(await (await get('trips')).json()).some((t) => t.id === trip.id));
+  d = (await db.query('SELECT version FROM departures WHERE id=$1', [departure.id])).rows[0];
+  await post('departures/' + departure.id, { version: d.version, active: true }, tripMerchant);
+  await db.query('UPDATE trips SET active=false WHERE id=$1', [trip.id]);
+  assert.equal((await post('bookings', input, tripBuyer)).status, 409);
+  await db.query('UPDATE trips SET active=true WHERE id=$1', [trip.id]);
+  await db.query("UPDATE departures SET starts_at=now()-interval '1 hour' WHERE id=$1", [
+    departure.id,
+  ]);
+  assert.equal((await post('bookings', input, tripBuyer)).status, 409);
+  assert.equal(
+    (await db.query('SELECT used FROM departures WHERE id=$1', [departure.id])).rows[0].used,
+    2,
+  );
 });

@@ -1,24 +1,117 @@
-import {chromium} from 'playwright';
-import {readFile,mkdir} from 'node:fs/promises';
-import {randomUUID} from 'node:crypto';
+import { chromium } from 'playwright';
+import { readFile, mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
-import {config} from 'dotenv';
+import { config } from 'dotenv';
 import pg from 'pg';
 import sharp from 'sharp';
-config({quiet:true});const url=new URL(process.env.DATABASE_URL);if(url.hostname!=='127.0.0.1'||url.port!=='55433'||url.pathname!=='/thinthai_dev')throw Error('Local development only');
-const db=new pg.Pool({connectionString:url.href});const credentials=await readFile('.local/dev-accounts.md','utf8');const [,,email,password]=credentials.split('\n').find(s=>s.startsWith('| MERCHANT |')).split('|').map(s=>s.trim());
-const browser=await chromium.launch({headless:true,channel:'chrome'});const prefix='สินค้า UI '+randomUUID().slice(0,8),storeIds=[];const png=await sharp({create:{width:480,height:320,channels:3,background:'#c6ddba'}}).png().toBuffer();
-try{await mkdir('design/previews/products',{recursive:true});const page=await browser.newPage();const catalog=await browser.newPage();const errors=[];for(const p of [page,catalog])p.on('pageerror',e=>errors.push(e.message));
-for(const [name,width,height] of [['desktop',1440,1000],['tablet',820,1180],['mobile',390,844]]){
- await page.setViewportSize({width,height});await page.goto('http://127.0.0.1:3200/workspace');await page.getByLabel('อีเมล',{exact:true}).fill(email);await page.getByLabel('รหัสผ่าน',{exact:true}).fill(password);await page.getByRole('button',{name:'เข้าสู่ระบบ',exact:true}).click();await page.getByRole('button',{name:'สินค้า',exact:true}).waitFor();
- const response=await page.request.post('http://127.0.0.1:3200/api/v1/stores',{headers:{Origin:'http://127.0.0.1:3200','X-ThinThai-Action':'1'},data:{name:prefix+' ร้าน '+name,address:'ที่อยู่ทดสอบสินค้า',category:'food',subdistrictId:'500107',lat:18.788,lng:98.965,active:true}});assert.equal(response.status(),201);const store=await response.json();storeIds.push(store.id);
- await page.reload();await page.getByRole('button',{name:'สินค้า',exact:true}).click();await page.getByLabel('เลือกร้าน').selectOption(store.id);await page.getByRole('button',{name:'เพิ่มสินค้า',exact:true}).click();const form=page.locator('.product-editor');await form.getByLabel('ชื่อสินค้า',{exact:true}).fill(prefix+' '+name);await form.getByLabel('ราคา (บาท)').fill('125.50');await form.getByLabel('วิธีรับสินค้า').selectOption('parcel_delivery');await form.getByLabel('สถานะสินค้า').selectOption('on');await form.getByLabel('สต๊อกเริ่มต้น').fill('5');await form.getByLabel('รายละเอียดสินค้า').fill('สินค้าอาหารแห้งตัวอย่าง ส่งพัสดุได้');await form.getByRole('button',{name:'บันทึกสินค้า',exact:true}).click();await page.getByRole('status').filter({hasText:'บันทึกสินค้าแล้ว'}).waitFor();
- await form.getByLabel('เลือกรูปสินค้า').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:png});await form.getByRole('button',{name:'บันทึกรูป',exact:true}).click();await page.getByRole('status').filter({hasText:'บันทึกรูปแล้ว'}).waitFor();await form.locator('.product-photo img').waitFor();
- await form.getByLabel('จำนวนที่เพิ่มหรือลด').fill('3');await form.getByLabel('เหตุผล',{exact:true}).fill('รับสินค้าเพิ่ม');await form.getByRole('button',{name:'บันทึกสต๊อก',exact:true}).click();await form.getByRole('heading',{name:'ปรับสต๊อก · ปัจจุบัน 8 ชิ้น'}).waitFor();
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,name+' overflow');await page.screenshot({path:`design/previews/products/${name}.png`,fullPage:true});
- await Promise.all([catalog.waitForResponse(r=>r.url().endsWith('/api/v1/catalog')),catalog.goto('http://127.0.0.1:3200/catalog')]);await catalog.getByRole('heading',{name:prefix+' '+name,exact:true}).waitFor();
- await form.getByLabel('สถานะสินค้า').selectOption('off');await form.getByRole('button',{name:'บันทึกสินค้า',exact:true}).click();await page.getByRole('status').filter({hasText:'บันทึกสินค้าแล้ว'}).waitFor();
- await Promise.all([catalog.waitForResponse(r=>r.url().endsWith('/api/v1/catalog')),catalog.reload()]);await catalog.getByRole('heading',{name:prefix+' '+name,exact:true}).waitFor({state:'detached'});
- await page.reload();await page.getByRole('button',{name:'สินค้า',exact:true}).click();await page.getByLabel('เลือกร้าน').selectOption(store.id);await page.getByRole('button',{name:'ประวัติสินค้า',exact:true}).click();await page.getByText(/รับสินค้าเพิ่ม · เปลี่ยน 3 ชิ้น → คงเหลือ 8/).waitFor();await page.getByRole('button',{name:'ออกจากระบบ',exact:true}).click();console.log(name+': create / image / stock / catalog visibility / reload / history passed');
-}assert.deepEqual(errors,[]);
-}finally{await browser.close();if(storeIds.length){await db.query('DELETE FROM store_memberships WHERE store_id=ANY($1::uuid[])',[storeIds]);await db.query('DELETE FROM stores WHERE id=ANY($1::uuid[])',[storeIds]);}await db.end();}
+config({ quiet: true });
+const url = new URL(process.env.DATABASE_URL);
+if (url.hostname !== '127.0.0.1' || url.port !== '55433' || url.pathname !== '/thinthai_dev')
+  throw Error('Local development only');
+const db = new pg.Pool({ connectionString: url.href });
+const credentials = await readFile('.local/dev-accounts.md', 'utf8');
+const [, , email, password] = credentials
+  .split('\n')
+  .find((s) => s.startsWith('| MERCHANT |'))
+  .split('|')
+  .map((s) => s.trim());
+const browser = await chromium.launch({ headless: true, channel: 'chrome' });
+const prefix = 'สินค้า UI ' + randomUUID().slice(0, 8),
+  storeIds = [];
+const png = await sharp({ create: { width: 480, height: 320, channels: 3, background: '#c6ddba' } })
+  .png()
+  .toBuffer();
+try {
+  await mkdir('design/previews/products', { recursive: true });
+  const page = await browser.newPage();
+  const catalog = await browser.newPage();
+  const errors = [];
+  for (const p of [page, catalog]) p.on('pageerror', (e) => errors.push(e.message));
+  for (const [name, width, height] of [
+    ['desktop', 1440, 1000],
+    ['tablet', 820, 1180],
+    ['mobile', 390, 844],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto('http://127.0.0.1:3200/workspace');
+    await page.getByLabel('อีเมล', { exact: true }).fill(email);
+    await page.getByLabel('รหัสผ่าน', { exact: true }).fill(password);
+    await page.getByRole('button', { name: 'เข้าสู่ระบบ', exact: true }).click();
+    await page.getByRole('button', { name: 'สินค้า', exact: true }).waitFor();
+    const response = await page.request.post('http://127.0.0.1:3200/api/v1/stores', {
+      headers: { Origin: 'http://127.0.0.1:3200', 'X-ThinThai-Action': '1' },
+      data: {
+        name: prefix + ' ร้าน ' + name,
+        address: 'ที่อยู่ทดสอบสินค้า',
+        category: 'food',
+        subdistrictId: '500107',
+        lat: 18.788,
+        lng: 98.965,
+        active: true,
+      },
+    });
+    assert.equal(response.status(), 201);
+    const store = await response.json();
+    storeIds.push(store.id);
+    await page.reload();
+    await page.getByRole('button', { name: 'สินค้า', exact: true }).click();
+    await page.getByLabel('เลือกร้าน').selectOption(store.id);
+    await page.getByRole('button', { name: 'เพิ่มสินค้า', exact: true }).click();
+    const form = page.locator('.product-editor');
+    await form.getByLabel('ชื่อสินค้า', { exact: true }).fill(prefix + ' ' + name);
+    await form.getByLabel('ราคา (บาท)').fill('125.50');
+    await form.getByLabel('วิธีรับสินค้า').selectOption('parcel_delivery');
+    await form.getByLabel('สถานะสินค้า').selectOption('on');
+    await form.getByLabel('สต๊อกเริ่มต้น').fill('5');
+    await form.getByLabel('รายละเอียดสินค้า').fill('สินค้าอาหารแห้งตัวอย่าง ส่งพัสดุได้');
+    await form.getByRole('button', { name: 'บันทึกสินค้า', exact: true }).click();
+    await page.getByRole('status').filter({ hasText: 'บันทึกสินค้าแล้ว' }).waitFor();
+    await form
+      .getByLabel('เลือกรูปสินค้า')
+      .setInputFiles({ name: 'sample.png', mimeType: 'image/png', buffer: png });
+    await form.getByRole('button', { name: 'บันทึกรูป', exact: true }).click();
+    await page.getByRole('status').filter({ hasText: 'บันทึกรูปแล้ว' }).waitFor();
+    await form.locator('.product-photo img').waitFor();
+    await form.getByLabel('จำนวนที่เพิ่มหรือลด').fill('3');
+    await form.getByLabel('เหตุผล', { exact: true }).fill('รับสินค้าเพิ่ม');
+    await form.getByRole('button', { name: 'บันทึกสต๊อก', exact: true }).click();
+    await form.getByRole('heading', { name: 'ปรับสต๊อก · ปัจจุบัน 8 ชิ้น' }).waitFor();
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+      name + ' overflow',
+    );
+    await page.screenshot({ path: `design/previews/products/${name}.png`, fullPage: true });
+    await Promise.all([
+      catalog.waitForResponse((r) => r.url().endsWith('/api/v1/catalog')),
+      catalog.goto('http://127.0.0.1:3200/catalog'),
+    ]);
+    await catalog.getByRole('heading', { name: prefix + ' ' + name, exact: true }).waitFor();
+    await form.getByLabel('สถานะสินค้า').selectOption('off');
+    await form.getByRole('button', { name: 'บันทึกสินค้า', exact: true }).click();
+    await page.getByRole('status').filter({ hasText: 'บันทึกสินค้าแล้ว' }).waitFor();
+    await Promise.all([
+      catalog.waitForResponse((r) => r.url().endsWith('/api/v1/catalog')),
+      catalog.reload(),
+    ]);
+    await catalog
+      .getByRole('heading', { name: prefix + ' ' + name, exact: true })
+      .waitFor({ state: 'detached' });
+    await page.reload();
+    await page.getByRole('button', { name: 'สินค้า', exact: true }).click();
+    await page.getByLabel('เลือกร้าน').selectOption(store.id);
+    await page.getByRole('button', { name: 'ประวัติสินค้า', exact: true }).click();
+    await page.getByText(/รับสินค้าเพิ่ม · เปลี่ยน 3 ชิ้น → คงเหลือ 8/).waitFor();
+    await page.getByRole('button', { name: 'ออกจากระบบ', exact: true }).click();
+    console.log(name + ': create / image / stock / catalog visibility / reload / history passed');
+  }
+  assert.deepEqual(errors, []);
+} finally {
+  await browser.close();
+  if (storeIds.length) {
+    await db.query('DELETE FROM store_memberships WHERE store_id=ANY($1::uuid[])', [storeIds]);
+    await db.query('DELETE FROM stores WHERE id=ANY($1::uuid[])', [storeIds]);
+  }
+  await db.end();
+}
