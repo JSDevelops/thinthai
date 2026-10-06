@@ -195,6 +195,11 @@ class Api {
       if (!(e instanceof HttpException) || e.getStatus() !== 401) throw e;
     }
     const bytes = await this.products.image(z.uuid().parse(id), a);
+    if (req.query.v) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    }
     res.type('image/webp').send(bytes);
   }
   @Get('products/:id/history') async productHistory(@Req() req: Request, @Param('id') id: string) {
@@ -407,7 +412,9 @@ async function start() {
   const app = await NestFactory.create(App, { bodyParser: false });
   app.use(helmet());
   app.use((req: Request, res: Response, next: () => void) => {
-    res.setHeader('Cache-Control', 'no-store');
+    if (!/^\/api\/v1\/products\/[a-f0-9-]{36}\/image$/.test(req.path)) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
     if (
       !['GET', 'HEAD'].includes(req.method) &&
       (req.headers.origin !== origin ||

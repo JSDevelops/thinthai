@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '8';
 const children = ['@thinthai/api', '@thinthai/web'].map((name) =>
   spawn('npm', ['run', 'dev', '-w', name], { stdio: 'inherit', env: { ...process.env } }),
 );

@@ -127,8 +127,28 @@ export default function Catalog() {
   }
   useEffect(() => {
     key.current = crypto.randomUUID();
+    try {
+      const saved = localStorage.getItem('thinthai_cart');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setCart(parsed);
+      }
+    } catch {
+      // ignore storage access error
+    }
     void load();
   }, []);
+  useEffect(() => {
+    try {
+      if (cart.length > 0) {
+        localStorage.setItem('thinthai_cart', JSON.stringify(cart));
+      } else {
+        localStorage.removeItem('thinthai_cart');
+      }
+    } catch {
+      // ignore storage access error
+    }
+  }, [cart]);
   function changed() {
     key.current = crypto.randomUUID();
     setNotice('');

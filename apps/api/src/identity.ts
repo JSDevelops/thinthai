@@ -10,7 +10,7 @@ import type { Request, Response } from 'express';
 import type { PoolClient } from 'pg';
 import { Db } from './db';
 import type { Actor } from './access';
-import { hashPassword, verifyPassword, dummyHash } from './password';
+import { hashPassword, verifyPassword, dummyHash, needsRehash } from './password';
 const cookie = 'thinthai_session';
 const options = {
   httpOnly: true,
@@ -148,6 +148,15 @@ export class Identity {
       return this.session(c, user.id, req);
     });
     this.issue(res, t);
+    if (user && needsRehash(user.password_hash)) {
+      hashPassword(input.password)
+        .then((newHash) => {
+          this.db.pool
+            .query('UPDATE app_users SET password_hash=$1 WHERE id=$2', [newHash, user.id])
+            .catch(() => {});
+        })
+        .catch(() => {});
+    }
     return this.byId(user.id);
   }
   async logout(req: Request, res: Response) {
