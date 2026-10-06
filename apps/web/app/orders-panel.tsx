@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 type Order = {
   id: string;
   storeName: string;
@@ -108,7 +109,7 @@ export default function OrdersPanel({ canManage = false }: { canManage?: boolean
       )}
       {error && (
         <p className="error" role="alert">
-          {error} <a href="/workspace">เข้าสู่ระบบ</a>
+          {error} <Link href="/workspace">เข้าสู่ระบบ</Link>
         </p>
       )}
       {loading ? (

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import PublicHeader from '../public-header';
 type Product = {
   id: string;
@@ -18,6 +19,24 @@ const methods: Record<string, string> = {
   parcel_delivery: 'ส่งพัสดุ',
   pickup: 'รับที่ร้าน',
 };
+function getCurrentLocation(
+  onSuccess: (lat: string, lng: string) => void,
+  onError: (msg: string) => void,
+) {
+  if (typeof window === 'undefined' || !navigator.geolocation) {
+    onError('อุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง GPS');
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      onSuccess(pos.coords.latitude.toFixed(6), pos.coords.longitude.toFixed(6));
+    },
+    (err) => {
+      onError('ไม่สามารถระบุตำแหน่งได้: ' + (err.message || 'กรุณาอนุญาตการเข้าถึงตำแหน่ง'));
+    },
+    { enableHighAccuracy: true, timeout: 10000 },
+  );
+}
 function Card({ p, onAdd }: { p: Product; onAdd: (p: Product) => void }) {
   const [lat, setLat] = useState(''),
     [lng, setLng] = useState(''),
@@ -91,7 +110,26 @@ function Card({ p, onAdd }: { p: Product; onAdd: (p: Product) => void }) {
                 }}
               />
             </label>
-            <button disabled={busy}>ตรวจพื้นที่จัดส่ง</button>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button disabled={busy}>ตรวจพื้นที่จัดส่ง</button>
+              <button
+                type="button"
+                className="outline"
+                disabled={busy}
+                onClick={() => {
+                  getCurrentLocation(
+                    (newLat, newLng) => {
+                      setLat(newLat);
+                      setLng(newLng);
+                      setResult('ระบุตำแหน่งพิกัดปัจจุบันแล้ว');
+                    },
+                    (err) => setResult(err),
+                  );
+                }}
+              >
+                📍 ใช้พิกัดปัจจุบัน
+              </button>
+            </div>
             <p role="status">{result}</p>
           </form>
         )}
@@ -238,7 +276,7 @@ export default function Catalog() {
         </p>
         {notice && (
           <p className="success" role="status">
-            {notice} <a href="/orders">ดูคำสั่งซื้อ</a>
+            {notice} <Link href="/orders">ดูคำสั่งซื้อ</Link>
           </p>
         )}
         {error && (
@@ -361,38 +399,59 @@ export default function Catalog() {
                   </label>
                 )}
                 {cart[0].p.fulfillment === 'instant_food_delivery' && (
-                  <div className="form-grid">
-                    <label>
-                      ละติจูดปลายทาง
-                      <input
-                        required
-                        type="number"
-                        step="any"
-                        min="-90"
-                        max="90"
-                        value={lat}
-                        onChange={(e) => {
-                          changed();
-                          setLat(e.target.value);
-                        }}
-                      />
-                    </label>
-                    <label>
-                      ลองจิจูดปลายทาง
-                      <input
-                        required
-                        type="number"
-                        step="any"
-                        min="-180"
-                        max="180"
-                        value={lng}
-                        onChange={(e) => {
-                          changed();
-                          setLng(e.target.value);
-                        }}
-                      />
-                    </label>
-                  </div>
+                  <>
+                    <div className="form-grid">
+                      <label>
+                        ละติจูดปลายทาง
+                        <input
+                          required
+                          type="number"
+                          step="any"
+                          min="-90"
+                          max="90"
+                          value={lat}
+                          onChange={(e) => {
+                            changed();
+                            setLat(e.target.value);
+                          }}
+                        />
+                      </label>
+                      <label>
+                        ลองจิจูดปลายทาง
+                        <input
+                          required
+                          type="number"
+                          step="any"
+                          min="-180"
+                          max="180"
+                          value={lng}
+                          onChange={(e) => {
+                            changed();
+                            setLng(e.target.value);
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      className="outline"
+                      disabled={busy}
+                      style={{ marginBottom: '14px', width: '100%' }}
+                      onClick={() => {
+                        getCurrentLocation(
+                          (newLat, newLng) => {
+                            changed();
+                            setLat(newLat);
+                            setLng(newLng);
+                            setNotice('ปักหมุดพิกัดปัจจุบันเรียบร้อย');
+                          },
+                          (err) => setError(err),
+                        );
+                      }}
+                    >
+                      📍 ปักหมุดจากตำแหน่งปัจจุบัน (GPS)
+                    </button>
+                  </>
                 )}
                 <button className="checkout-button">
                   {busy ? 'กำลังยืนยัน…' : 'ยืนยันคำสั่งซื้อทดลอง'}

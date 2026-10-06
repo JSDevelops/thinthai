@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { tripApi, tripDate, money } from './trip-shared';
 type Booking = {
   id: string;
@@ -79,7 +80,7 @@ export default function BookingsPanel({ manage = false }: { manage?: boolean }) 
       <p>ยังไม่รับชำระเงินจริง · ยกเลิกเองได้ก่อนยืนยันและก่อนเริ่มทริป</p>
       {error && (
         <p role="alert" className="error">
-          {error} <a href="/workspace">เข้าสู่ระบบ</a>
+          {error} <Link href="/workspace">เข้าสู่ระบบ</Link>
         </p>
       )}
       {selected && (
@@ -113,7 +114,7 @@ export default function BookingsPanel({ manage = false }: { manage?: boolean }) 
         <p>กำลังโหลด…</p>
       ) : !rows.length && !error ? (
         <p className="empty">
-          ยังไม่มีการจอง <a href="/trips">ค้นหาทริป</a>
+          ยังไม่มีการจอง <Link href="/trips">ค้นหาทริป</Link>
         </p>
       ) : null}
       <div className="application-list">

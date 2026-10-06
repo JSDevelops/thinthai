@@ -1,5 +1,7 @@
+import Link from 'next/link';
 import PublicHeader from './public-header';
 import Landscape from './landscape';
+
 export default function Home() {
   return (
     <div className="public-site">
@@ -18,12 +20,12 @@ export default function Home() {
               จากชุมชนที่รอให้คุณไปสัมผัส
             </p>
             <div className="hero-actions">
-              <a className="button-link" href="/trips">
+              <Link className="button-link" href="/trips">
                 ค้นหาทริป →
-              </a>
-              <a className="button-link secondary" href="/catalog">
+              </Link>
+              <Link className="button-link secondary" href="/catalog">
                 ช้อปของดีชุมชน
-              </a>
+              </Link>
             </div>
             <small>แอปเดียวครบ จองทริป ช้อปสินค้าชุมชน</small>
           </div>
@@ -41,7 +43,7 @@ export default function Home() {
             <p>เลือกง่าย ใช้สะดวก ในทุกหน้าจอ</p>
           </div>
           <div className="journey-grid">
-            <a href="/trips">
+            <Link href="/trips">
               <span className="journey-number">01 / EXPLORE</span>
               <h3>เที่ยวถึงถิ่น ↗</h3>
               <p>
@@ -49,8 +51,8 @@ export default function Home() {
                 <br />
                 แล้วจองที่นั่งของคุณ
               </p>
-            </a>
-            <a href="/catalog">
+            </Link>
+            <Link href="/catalog">
               <span className="journey-number">02 / DISCOVER</span>
               <h3>ช้อปจากชุมชน ↗</h3>
               <p>
@@ -58,8 +60,8 @@ export default function Home() {
                 <br />
                 จากผู้ประกอบการในชุมชน
               </p>
-            </a>
-            <a href="/workspace">
+            </Link>
+            <Link href="/workspace">
               <span className="journey-number">03 / CONNECT</span>
               <h3>เติบโตไปด้วยกัน ↗</h3>
               <p>
@@ -67,7 +69,7 @@ export default function Home() {
                 <br />
                 สมัครผู้ประกอบการกับ ThinThai
               </p>
-            </a>
+            </Link>
           </div>
         </section>
         <section className="local-banner">
@@ -76,7 +78,7 @@ export default function Home() {
             <h2>ทุกการเดินทาง มีชุมชนอยู่เบื้องหลัง</h2>
             <p>สัมผัสวิถีชีวิต วัฒนธรรม และธรรมชาติอันงดงาม</p>
           </div>
-          <a href="/trips">ออกไปค้นพบ →</a>
+          <Link href="/trips">ออกไปค้นพบ →</Link>
         </section>
         <p className="footnote">
           เว็บไซต์รุ่นทดลองในเครื่อง ข้อมูลตัวอย่างใช้เพื่อทดสอบระบบ ยังไม่รับชำระเงินจริง
@@ -85,7 +87,7 @@ export default function Home() {
       <footer className="public-footer">
         <strong>ThinThai</strong>
         <span>เที่ยวไทยให้ถึงถิ่น</span>
-        <a href="/workspace">เข้าสู่ระบบ</a>
+        <Link href="/workspace">เข้าสู่ระบบ</Link>
       </footer>
     </div>
   );

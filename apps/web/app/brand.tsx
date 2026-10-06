@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function Brand({
   reverse = false,
   tagline = true,
@@ -6,7 +8,7 @@ export default function Brand({
   tagline?: boolean;
 }) {
   return (
-    <a
+    <Link
       className={'brand brand-lockup' + (reverse ? ' brand-on-dark' : '')}
       href="/"
       aria-label="ThinThai — หน้าหลัก"
@@ -18,6 +20,6 @@ export default function Brand({
         height={128}
       />
       {tagline && <small>เที่ยวไทยให้ถึงถิ่น</small>}
-    </a>
+    </Link>
   );
 }

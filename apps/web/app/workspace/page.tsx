@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import StoreEditor from '../store-editor';
 import ApplicationsPanel from '../applications-panel';
 import ProductsPanel from '../products-panel';
@@ -283,9 +284,9 @@ export default function Page() {
           )}
         </header>
         <div className="workspace-links">
-          <a href="/trips">เที่ยวและจองทริป</a>
-          <a href="/catalog">เลือกสินค้า</a>
-          <a href="/bookings">ทริปของฉัน</a>
+          <Link href="/trips">เที่ยวและจองทริป</Link>
+          <Link href="/catalog">เลือกสินค้า</Link>
+          <Link href="/bookings">ทริปของฉัน</Link>
         </div>
         <div className="notice">
           รุ่นพัฒนาในเครื่อง • บัญชีบันทึกในฐานข้อมูลแล้ว • ร้านค้าเป็นข้อมูลตัวอย่าง •

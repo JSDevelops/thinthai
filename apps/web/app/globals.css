@@ -1,13 +1,34 @@
+:root {
+  --color-primary: #00695c;
+  --color-primary-dark: #123f37;
+  --color-accent: #d37827;
+  --color-gold: #ffc578;
+  --color-surface: #fff9f1;
+  --color-bg: #f6f7f3;
+  --color-text: #173832;
+  --color-muted: #556a62;
+  --color-border: #e0e6de;
+  --radius-card: 14px;
+  --radius-btn: 10px;
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
-  background: #f6f7f3;
-  color: #173832;
-  font-family: Tahoma, Arial, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family:
+    var(--font-anuphan, 'Anuphan'),
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
   font-size: 16px;
   line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
 }
 button,
 input,
@@ -1247,5 +1268,70 @@ a {
   }
   .booking-form select {
     font-size: 14px;
+  }
+}
+
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 650px) {
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--color-border);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    z-index: 999;
+    align-items: center;
+    justify-content: space-around;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.05);
+  }
+
+  .bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    height: 100%;
+    color: var(--color-muted);
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 500;
+    gap: 3px;
+    transition:
+      color 0.15s ease,
+      transform 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .bottom-nav-item.active {
+    color: var(--color-primary);
+    font-weight: 700;
+  }
+
+  .bottom-nav-icon {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .bottom-nav-label {
+    letter-spacing: -0.2px;
+  }
+
+  main,
+  .catalog-page,
+  .trips-page,
+  .orders-page,
+  .bookings-page,
+  .home-main {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
