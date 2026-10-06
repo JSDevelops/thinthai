@@ -1,0 +1,12 @@
+ALTER TABLE app_users ADD COLUMN email text UNIQUE;
+ALTER TABLE app_users ADD COLUMN password_hash text;
+ALTER TABLE app_users ADD COLUMN active boolean NOT NULL DEFAULT true;
+ALTER TABLE app_users ADD CONSTRAINT email_canonical CHECK(email = lower(trim(email)));
+ALTER TABLE stores ADD COLUMN category text NOT NULL DEFAULT 'craft' CHECK(category IN ('food','craft'));
+CREATE TABLE auth_sessions(token_hash text PRIMARY KEY, user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE, created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL);
+CREATE INDEX sessions_user_idx ON auth_sessions(user_id);
+CREATE INDEX sessions_expiry_idx ON auth_sessions(expires_at);
+CREATE TABLE auth_rate_limits(key text PRIMARY KEY, count integer NOT NULL, resets_at timestamptz NOT NULL);
+CREATE INDEX rate_expiry_idx ON auth_rate_limits(resets_at);
+CREATE TABLE audit_events(id uuid PRIMARY KEY, actor_id uuid REFERENCES app_users(id), event text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX audit_actor_date_idx ON audit_events(actor_id,created_at DESC);

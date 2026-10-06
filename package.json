@@ -1,0 +1,42 @@
+{
+  "name": "thinthai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ThinThai community tourism and commerce platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build -w @thinthai/api && npm run build -w @thinthai/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "node --experimental-strip-types --test tests/integration/access.test.ts",
+    "test:integration": "npm run build -w @thinthai/api && node --test tests/integration/http.test.mjs",
+    "db:start": "node scripts/db-local.mjs start",
+    "db:stop": "node scripts/db-local.mjs stop",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:seed": "npm run build -w @thinthai/api && node scripts/seed.mjs",
+    "test:ui": "node tests/e2e/auth.mjs",
+    "test:stores-ui": "node tests/e2e/stores.mjs",
+    "test:registration-ui": "node tests/e2e/registration.mjs",
+    "test:products-ui": "node tests/e2e/products.mjs",
+    "test:orders-ui": "node tests/e2e/orders.mjs",
+    "test:trips-ui": "node tests/e2e/trips.mjs",
+    "db:seed-trips": "node scripts/seed-trips.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "@types/pg": "^8.15.6",
+    "playwright": "^1.62.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "pg": "^8.16.3"
+  }
+}

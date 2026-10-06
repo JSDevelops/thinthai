@@ -1,0 +1,1 @@
+import PublicHeader from '../public-header';import OrdersPanel from '../orders-panel';export default function Orders(){return <><PublicHeader/><main className="catalog-page"><h1>คำสั่งซื้อของฉัน</h1><OrdersPanel/></main></>;}
