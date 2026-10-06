@@ -28,7 +28,8 @@
     "test:products-ui": "node tests/e2e/products.mjs",
     "test:orders-ui": "node tests/e2e/orders.mjs",
     "test:trips-ui": "node tests/e2e/trips.mjs",
-    "db:seed-trips": "node scripts/seed-trips.mjs"
+    "db:seed-trips": "node scripts/seed-trips.mjs",
+    "db:seed-products": "node scripts/seed-products.mjs"
   },
   "devDependencies": {
     "@types/node": "24.10.0",

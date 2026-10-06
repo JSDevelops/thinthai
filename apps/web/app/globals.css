@@ -1044,21 +1044,23 @@ a {
 }
 @media (max-width: 600px) {
   .public-header {
-    padding: 18px 20px;
-    gap: 16px;
+    padding: 16px 20px;
+    align-items: center;
+    justify-content: space-between;
   }
   .public-header nav {
-    width: 100%;
-    gap: 14px;
+    width: auto;
+    gap: 10px;
   }
-  .public-header nav a {
-    font-size: 12px;
-    min-height: 40px;
-    display: flex;
-    align-items: center;
+  .public-header nav a:not(.nav-account) {
+    display: none;
   }
   .public-header .nav-account {
-    padding: 5px 10px;
+    padding: 6px 14px;
+    font-size: 13px;
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
   }
   .home-main {
     padding: 28px 20px;
