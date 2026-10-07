@@ -1,7 +1,8 @@
 import { chromium } from 'playwright';
 import { mkdir } from 'node:fs/promises';
 
-const artifactDir = '/Users/3designs/.gemini/antigravity-ide/brain/5694b025-8cc3-4fc5-bcd7-3660c1cd9348';
+const artifactDir =
+  '/Users/3designs/.gemini/antigravity-ide/brain/5694b025-8cc3-4fc5-bcd7-3660c1cd9348';
 const scratchDir = `${artifactDir}/scratch/ui_test`;
 await mkdir(scratchDir, { recursive: true });
 
@@ -74,7 +75,10 @@ await mobile.screenshot({ path: `${scratchDir}/mobile-home.png` });
 // Mobile Trips
 await mobile.goto('http://127.0.0.1:3200/trips');
 await mobile.waitForSelector('.trips-page');
-const mobileActiveTab = await mobile.$eval('.bottom-nav-item.active .bottom-nav-label', (el) => el.textContent);
+const mobileActiveTab = await mobile.$eval(
+  '.bottom-nav-item.active .bottom-nav-label',
+  (el) => el.textContent,
+);
 console.log('✓ Mobile active bottom nav tab on /trips:', mobileActiveTab);
 await mobile.screenshot({ path: `${scratchDir}/mobile-trips.png` });
 

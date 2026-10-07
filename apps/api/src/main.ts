@@ -400,15 +400,20 @@ class Api {
 })
 class App {}
 async function start() {
-  if (process.env.NODE_ENV === 'production')
+  if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_PROD_ROLLOUT)
     throw Error(
-      'Local development only: production rollout requires verified email, recovery, MFA and deployment configuration.',
+      'Production guard: verified email, recovery, MFA and deployment configuration are required before production rollout. Set ALLOW_PROD_ROLLOUT=true when environment is prepared.',
     );
   if (!process.env.DATABASE_URL)
     throw Error('DATABASE_URL is required. Run db:start and db:migrate.');
   const origin = process.env.WEB_ORIGIN ?? 'http://127.0.0.1:3200';
-  if (origin !== 'http://127.0.0.1:3200')
-    throw Error('Local WEB_ORIGIN must be http://127.0.0.1:3200');
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    origin !== 'http://127.0.0.1:3200' &&
+    !process.env.ALLOW_EXTERNAL_ORIGIN
+  ) {
+    throw Error('Local WEB_ORIGIN must be http://127.0.0.1:3200 or set ALLOW_EXTERNAL_ORIGIN=true');
+  }
   const app = await NestFactory.create(App, { bodyParser: false });
   app.use(helmet());
   app.use((req: Request, res: Response, next: () => void) => {
@@ -437,7 +442,9 @@ async function start() {
   });
   app.useGlobalFilters(new Errors());
   app.enableShutdownHooks();
-  await app.listen(Number(process.env.API_PORT ?? 4200), '127.0.0.1');
+  const host =
+    process.env.API_HOST ?? (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
+  await app.listen(Number(process.env.API_PORT ?? 4200), host);
 }
 start().catch((e) => {
   console.error(e.message);

@@ -1106,7 +1106,12 @@ a {
 .hero-photo-gradient {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to right, rgba(255, 253, 248, 0.65) 0%, rgba(255, 253, 248, 0) 35%, rgba(0, 0, 0, 0.25) 100%);
+  background: linear-gradient(
+    to right,
+    rgba(255, 253, 248, 0.65) 0%,
+    rgba(255, 253, 248, 0) 35%,
+    rgba(0, 0, 0, 0.25) 100%
+  );
   pointer-events: none;
 }
 .hero-floating-badge {
@@ -1219,7 +1224,12 @@ a {
 .comm-card-dark-gradient {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.2) 60%, transparent 100%);
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.85) 0%,
+    rgba(0, 0, 0, 0.2) 60%,
+    transparent 100%
+  );
 }
 .comm-card-tag-pill {
   position: absolute;
@@ -1426,12 +1436,20 @@ a {
   animation: drawerSlideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes drawerFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes drawerSlideLeft {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 .drawer-top-bar {
   display: flex;
@@ -1481,7 +1499,7 @@ a {
 .drawer-photo-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.3) 0%, transparent 60%);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.3) 0%, transparent 60%);
 }
 .drawer-body-content {
   padding: 22px 24px 100px;
@@ -1584,7 +1602,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 .counter-btn:disabled {
   opacity: 0.4;
@@ -1622,6 +1640,86 @@ a {
   border-radius: 12px;
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.5;
+}
+.booking-success-box a {
+  color: #1b5e20;
+  font-weight: 700;
+  text-decoration: underline;
+  margin-left: 6px;
+}
+.drawer-notice-bar {
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  color: #795548;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.drawer-departure-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.drawer-departure-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #dce6df;
+  background: white;
+  font-size: 13px;
+  font-weight: 600;
+  color: #173832;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+.drawer-departure-btn.active {
+  background: #00594c;
+  color: white;
+  border-color: #00594c;
+}
+.drawer-departure-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f6f7f3;
+}
+.drawer-remaining-tag {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.drawer-input-field {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #dce6df;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  color: #173832;
+}
+.drawer-input-field:focus {
+  border-color: #00594c;
+  box-shadow: 0 0 0 3px rgba(0, 89, 76, 0.1);
+}
+.drawer-error-box {
+  background: #ffebee;
+  border: 1px solid #ef9a9a;
+  color: #c62828;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.drawer-error-box a {
+  color: #b71c1c;
+  font-weight: 700;
+  text-decoration: underline;
+  margin-left: 6px;
 }
 .drawer-sticky-bottom {
   position: sticky;
@@ -1635,7 +1733,7 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  box-shadow: 0 -6px 20px rgba(0,0,0,0.06);
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.06);
 }
 .drawer-price-number {
   font-size: 20px;
@@ -1742,7 +1840,7 @@ a {
     color: #173832;
     font-weight: 700;
     font-size: 15px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
     transition: transform 0.15s ease;
   }
   .quick-cat-card:hover {

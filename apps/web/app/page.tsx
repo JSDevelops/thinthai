@@ -1,8 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import PublicHeader from './public-header';
+import {
+  tripApi,
+  tripDate,
+  categories as categoryDict,
+  type Trip,
+  type Departure,
+} from './trip-shared';
 
 interface CommunityItem {
   id: string;
@@ -11,9 +18,14 @@ interface CommunityItem {
   category: string;
   imageUrl: string;
   tripPrice: number;
+  priceSatang: number;
   duration: string;
   groupType: string;
   workshopTitle: string;
+  meetingPoint?: string;
+  description?: string;
+  departures: Departure[];
+  isReal?: boolean;
 }
 
 interface CraftItem {
@@ -25,7 +37,7 @@ interface CraftItem {
   artisan: string;
 }
 
-const COMMUNITIES: CommunityItem[] = [
+const DEFAULT_COMMUNITIES: CommunityItem[] = [
   {
     id: 'mae-kampong',
     name: 'แม่กำปอง',
@@ -34,9 +46,12 @@ const COMMUNITIES: CommunityItem[] = [
     imageUrl:
       'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1000&q=80',
     tripPrice: 600,
+    priceSatang: 60000,
     duration: '2 ชั่วโมง',
     groupType: 'กลุ่มเล็ก',
     workshopTitle: 'เรียนทอผ้ากับชุมชน',
+    meetingPoint: 'ศูนย์บริการนักท่องเที่ยวแม่กำปอง จ.เชียงใหม่',
+    departures: [],
   },
   {
     id: 'koh-kret',
@@ -46,9 +61,12 @@ const COMMUNITIES: CommunityItem[] = [
     imageUrl:
       'https://images.unsplash.com/photo-1528181304800-259b08848526?auto=format&fit=crop&w=1000&q=80',
     tripPrice: 450,
+    priceSatang: 45000,
     duration: '3 ชั่วโมง',
     groupType: 'กลุ่มครอบครัว',
     workshopTitle: 'ปั้นดินเผาโบราณเกาะเกร็ด',
+    meetingPoint: 'ท่าเรือวัดสนามเหนือ เกาะเกร็ด จ.นนทบุรี',
+    departures: [],
   },
   {
     id: 'baan-rak-thai',
@@ -58,9 +76,12 @@ const COMMUNITIES: CommunityItem[] = [
     imageUrl:
       'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1000&q=80',
     tripPrice: 950,
+    priceSatang: 95000,
     duration: '1 วันเต็ม',
     groupType: 'กลุ่มเล็ก',
     workshopTitle: 'ล่องเรือชมสายหมอก & ชิมชายูนนาน',
+    meetingPoint: 'ริมทะเลสาบบ้านรักไทย จ.แม่ฮ่องสอน',
+    departures: [],
   },
 ];
 
@@ -102,38 +123,144 @@ const CATEGORIES = [
   { id: 'craft', label: 'งานฝีมือ', icon: '🧵' },
 ];
 
+const categoryImages: Record<string, string> = {
+  nature:
+    'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1000&q=80',
+  culture:
+    'https://images.unsplash.com/photo-1528181304800-259b08848526?auto=format&fit=crop&w=1000&q=80',
+  food: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1000&q=80',
+  craft:
+    'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1000&q=80',
+};
+
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [communities, setCommunities] = useState<CommunityItem[]>(DEFAULT_COMMUNITIES);
 
-  // Booking Drawer State (Mockup 3)
+  // Booking Drawer State
   const [activeBooking, setActiveBooking] = useState<CommunityItem | null>(null);
-  const [selectedDate, setSelectedDate] = useState('13 พ.ย.');
-  const [guestCount, setGuestCount] = useState(2);
+  const [selectedDepartureId, setSelectedDepartureId] = useState('');
+  const [guestCount, setGuestCount] = useState(1);
+  const [contactName, setContactName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmedBookingId, setConfirmedBookingId] = useState('');
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const nonce = useRef('');
 
-  const filteredCommunities = COMMUNITIES.filter((item) => {
+  const loadRealTrips = useCallback(async () => {
+    try {
+      const data: Trip[] = await tripApi('trips');
+      if (Array.isArray(data) && data.length > 0) {
+        const mapped: CommunityItem[] = data.map((t) => ({
+          id: t.id,
+          name: t.storeName,
+          province: t.province,
+          category: categoryDict[t.category] || t.category,
+          imageUrl: categoryImages[t.category] || categoryImages.culture,
+          tripPrice: Math.round(t.priceSatang / 100),
+          priceSatang: t.priceSatang,
+          duration: `${t.durationHours} ชั่วโมง`,
+          groupType: 'ชุมชนท้องถิ่น',
+          workshopTitle: t.title,
+          meetingPoint: t.meetingPoint,
+          description: t.description,
+          departures: t.departures || [],
+          isReal: true,
+        }));
+        setCommunities(mapped);
+      }
+    } catch {
+      // Fallback to default community items if API offline or during initial build
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRealTrips();
+  }, [loadRealTrips]);
+
+  const filteredCommunities = communities.filter((item) => {
     const matchCategory =
       selectedCategory === 'all' ||
       item.category.toLowerCase().includes(selectedCategory) ||
-      (selectedCategory === 'nature' && item.category === 'ธรรมชาติ') ||
-      (selectedCategory === 'culture' && item.category === 'วัฒนธรรม');
+      (selectedCategory === 'nature' && item.category.includes('ธรรมชาติ')) ||
+      (selectedCategory === 'culture' && item.category.includes('วัฒนธรรม')) ||
+      (selectedCategory === 'food' && item.category.includes('อาหาร')) ||
+      (selectedCategory === 'craft' && item.category.includes('ฝีมือ'));
     const matchQuery =
       searchQuery.trim() === '' ||
-      item.name.includes(searchQuery) ||
-      item.province.includes(searchQuery) ||
-      item.workshopTitle.includes(searchQuery);
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.province.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.workshopTitle.toLowerCase().includes(searchQuery.toLowerCase());
     return matchCategory && matchQuery;
   });
 
   const handleOpenBooking = (item: CommunityItem) => {
     setActiveBooking(item);
+    const validDep = item.departures.find((d) => d.remaining > 0);
+    setSelectedDepartureId(validDep ? validDep.id : item.departures[0]?.id || '');
+    setGuestCount(1);
+    setError('');
     setBookingConfirmed(false);
+    setConfirmedBookingId('');
+    nonce.current = '';
   };
 
   const handleCloseBooking = () => {
     setActiveBooking(null);
+    setError('');
+  };
+
+  const handleConfirmBooking = async () => {
+    if (!activeBooking || busy) return;
+
+    if (activeBooking.departures.length === 0) {
+      setError('ทริปนี้ยังไม่มีรอบเดินทางที่เปิดรับจอง กรุณาดูรายการรอบเพิ่มเติมที่หน้าทริป');
+      return;
+    }
+
+    if (!selectedDepartureId) {
+      setError('กรุณาเลือกรอบเดินทางที่ต้องการจอง');
+      return;
+    }
+
+    if (!contactName.trim()) {
+      setError('กรุณาระบุชื่อ-นามสกุลของผู้ติดต่อ');
+      return;
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length < 8) {
+      setError('กรุณาระบุเบอร์โทรศัพท์ที่ถูกต้อง (อย่างน้อย 8 หลัก)');
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    nonce.current ||= crypto.randomUUID();
+
+    try {
+      const result = await tripApi('bookings', {
+        departureId: selectedDepartureId,
+        seats: guestCount,
+        expectedPriceSatang: activeBooking.priceSatang,
+        contactName: contactName.trim(),
+        phone: phone.trim(),
+        requestKey: nonce.current,
+      });
+
+      setConfirmedBookingId(result.id);
+      setBookingConfirmed(true);
+      nonce.current = '';
+      void loadRealTrips();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -224,19 +351,19 @@ export default function Home() {
           <div className="quick-cat-grid">
             <Link href="/trips" className="quick-cat-card">
               <span className="quick-icon">⛰️</span>
-              <span className="quick-label">เที่ยว</span>
+              <span className="quick-label">ทริปชุมชน</span>
             </Link>
-            <Link href="/trips?cat=กิจกรรม" className="quick-cat-card">
+            <Link href="/trips?cat=culture" className="quick-cat-card">
               <span className="quick-icon">👥</span>
-              <span className="quick-label">กิจกรรม</span>
+              <span className="quick-label">วิถีชุมชน</span>
             </Link>
-            <Link href="/trips?cat=ที่พัก" className="quick-cat-card">
-              <span className="quick-icon">🏡</span>
-              <span className="quick-label">ที่พัก</span>
+            <Link href="/trips?cat=food" className="quick-cat-card">
+              <span className="quick-icon">🍲</span>
+              <span className="quick-label">อาหารพื้นถิ่น</span>
             </Link>
             <Link href="/catalog" className="quick-cat-card">
               <span className="quick-icon">🛍️</span>
-              <span className="quick-label">ของฝาก</span>
+              <span className="quick-label">ของดีชุมชน</span>
             </Link>
           </div>
         </section>
@@ -307,11 +434,7 @@ export default function Home() {
 
           <div className="craft-products-flex-grid">
             {CRAFT_ITEMS.map((craft) => (
-              <Link
-                key={craft.id}
-                href={`/catalog`}
-                className="craft-item-horizontal-card"
-              >
+              <Link key={craft.id} href={`/catalog`} className="craft-item-horizontal-card">
                 <img
                   src={craft.imageUrl}
                   alt={craft.title}
@@ -357,17 +480,10 @@ export default function Home() {
           role="dialog"
           aria-modal="true"
         >
-          <div
-            className="booking-drawer-sheet"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="booking-drawer-sheet" onClick={(e) => e.stopPropagation()}>
             {/* Top Navigation */}
             <div className="drawer-top-bar">
-              <button
-                type="button"
-                className="drawer-back-btn"
-                onClick={handleCloseBooking}
-              >
+              <button type="button" className="drawer-back-btn" onClick={handleCloseBooking}>
                 ‹ กลับ
               </button>
               <button
@@ -382,8 +498,8 @@ export default function Home() {
             {/* Workshop Hero Photo */}
             <div className="drawer-photo-wrap">
               <img
-                src="https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=800&q=80"
-                alt="เรียนทอผ้ากับชุมชน"
+                src={activeBooking.imageUrl}
+                alt={activeBooking.workshopTitle}
                 className="drawer-workshop-img"
               />
               <div className="drawer-photo-overlay" />
@@ -391,15 +507,31 @@ export default function Home() {
 
             {/* Workshop Title & Location */}
             <div className="drawer-body-content">
-              <h2 className="drawer-workshop-title">
-                {activeBooking.workshopTitle}
-              </h2>
+              <div className="drawer-notice-bar">
+                การจองรุ่นทดลอง · กันที่นั่งเมื่อส่งคำขอ รอผู้ประกอบการยืนยัน ·
+                ยังไม่รับชำระเงินจริง
+              </div>
+
+              <h2 className="drawer-workshop-title">{activeBooking.workshopTitle}</h2>
               <div className="drawer-location-row">
                 <span className="drawer-pin">📍</span>
                 <span>
                   {activeBooking.name}, {activeBooking.province}
                 </span>
               </div>
+
+              {activeBooking.meetingPoint && (
+                <div className="drawer-location-row">
+                  <span className="drawer-pin">🚩</span>
+                  <span style={{ fontSize: '13px' }}>จุดนัดพบ: {activeBooking.meetingPoint}</span>
+                </div>
+              )}
+
+              {activeBooking.description && (
+                <p style={{ fontSize: '13px', color: '#556a62', margin: '0', lineHeight: 1.5 }}>
+                  {activeBooking.description}
+                </p>
+              )}
 
               {/* Badges */}
               <div className="drawer-badges-row">
@@ -413,33 +545,52 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Date Selection */}
+              {/* Departure Selection */}
               <div className="drawer-form-section">
-                <label className="drawer-section-label">เลือกวัน</label>
-                <div className="drawer-date-pills">
-                  {['13 พ.ย.', '14 พ.ย.', '15 พ.ย.'].map((date) => (
-                    <button
-                      key={date}
-                      type="button"
-                      className={
-                        'drawer-date-pill' +
-                        (selectedDate === date ? ' active' : '')
-                      }
-                      onClick={() => setSelectedDate(date)}
-                    >
-                      {date}
-                    </button>
-                  ))}
-                </div>
+                <label className="drawer-section-label">รอบเดินทาง</label>
+                {activeBooking.departures.length > 0 ? (
+                  <div className="drawer-departure-list">
+                    {activeBooking.departures.map((d) => {
+                      const isSelected = selectedDepartureId === d.id;
+                      const isFull = d.remaining <= 0;
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          disabled={isFull || bookingConfirmed}
+                          className={'drawer-departure-btn' + (isSelected ? ' active' : '')}
+                          onClick={() => {
+                            setSelectedDepartureId(d.id);
+                            setError('');
+                          }}
+                        >
+                          <span>📅 {tripDate(d.startsAt)}</span>
+                          <span className="drawer-remaining-tag">
+                            {isFull ? 'เต็มแล้ว' : `ว่าง ${d.remaining} ที่`}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="drawer-location-row" style={{ color: '#d37827' }}>
+                    <span>
+                      ⚠️ ยังไม่มีรอบเปิดรับจองสำหรับรายการนี้ ตรวจสอบรอบทั้งหมดได้ที่{' '}
+                      <Link href="/trips" style={{ textDecoration: 'underline' }}>
+                        หน้าค้นหาทริป
+                      </Link>
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Guest Counter */}
               <div className="drawer-form-section">
                 <div className="guest-counter-row">
                   <div>
-                    <label className="drawer-section-label">ผู้เข้าร่วม</label>
+                    <label className="drawer-section-label">จำนวนผู้เข้าร่วม</label>
                     <div className="guest-counter-sub">
-                      ฿{activeBooking.tripPrice} / คน
+                      ฿{activeBooking.tripPrice.toLocaleString('th-TH')} / คน
                     </div>
                   </div>
                   <div className="counter-controls">
@@ -447,7 +598,7 @@ export default function Home() {
                       type="button"
                       className="counter-btn"
                       onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
-                      disabled={guestCount <= 1}
+                      disabled={guestCount <= 1 || bookingConfirmed}
                     >
                       −
                     </button>
@@ -455,11 +606,50 @@ export default function Home() {
                     <button
                       type="button"
                       className="counter-btn"
-                      onClick={() => setGuestCount(guestCount + 1)}
+                      onClick={() => {
+                        const maxSeats = Math.min(
+                          10,
+                          activeBooking.departures.find((d) => d.id === selectedDepartureId)
+                            ?.remaining || 10,
+                        );
+                        setGuestCount((prev) => Math.min(maxSeats, prev + 1));
+                      }}
+                      disabled={
+                        bookingConfirmed ||
+                        guestCount >=
+                          Math.min(
+                            10,
+                            activeBooking.departures.find((d) => d.id === selectedDepartureId)
+                              ?.remaining || 10,
+                          )
+                      }
                     >
                       +
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Contact Information Form */}
+              <div className="drawer-form-section">
+                <label className="drawer-section-label">ข้อมูลผู้ติดต่อ</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <input
+                    type="text"
+                    className="drawer-input-field"
+                    placeholder="ชื่อ-นามสกุล ผู้ติดต่อ *"
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
+                    disabled={bookingConfirmed || busy}
+                  />
+                  <input
+                    type="tel"
+                    className="drawer-input-field"
+                    placeholder="เบอร์โทรศัพท์ติดต่อ (เช่น 0812345678) *"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    disabled={bookingConfirmed || busy}
+                  />
                 </div>
               </div>
 
@@ -470,9 +660,26 @@ export default function Home() {
                 <span className="policy-arrow">›</span>
               </div>
 
+              {/* Error Alert */}
+              {error && (
+                <div className="drawer-error-box" role="alert">
+                  ⚠️ {error}
+                  {error.includes('เข้าสู่ระบบ') && (
+                    <Link href="/workspace">ไปหน้าเข้าสู่ระบบ →</Link>
+                  )}
+                </div>
+              )}
+
+              {/* Success Box */}
               {bookingConfirmed && (
-                <div className="booking-success-box">
-                  ✅ จองสำเร็จแล้ว! เตรียมออกเดินทางวันที่ {selectedDate} ({guestCount} คน)
+                <div className="booking-success-box" role="status">
+                  🎉 บันทึกคำขอจองสำเร็จแล้ว! (รหัส: {confirmedBookingId.slice(0, 8)})
+                  <br />
+                  <small style={{ color: '#2e7d32' }}>
+                    จำนวน {guestCount} ท่าน · บันทึกในระบบหลังบ้านแล้ว
+                  </small>
+                  <br />
+                  <Link href="/bookings">ดูสถานะการจองใน &quot;ทริปของฉัน&quot; →</Link>
                 </div>
               )}
             </div>
@@ -484,23 +691,26 @@ export default function Home() {
                   ฿{(activeBooking.tripPrice * guestCount).toLocaleString('th-TH')}
                   <small> / {guestCount} คน</small>
                 </div>
-                <div className="drawer-price-note">รวมอาหารและอุปกรณ์ชุมชน</div>
+                <div className="drawer-price-note">รวมอุปกรณ์และกิจกรรมชุมชน</div>
               </div>
-              <button
-                type="button"
-                className="drawer-checkout-btn"
-                onClick={() => {
-                  setBookingConfirmed(true);
-                  setTimeout(() => {
-                    alert(
-                      `🎉 ทำการจอง "${activeBooking.workshopTitle}" วันที่ ${selectedDate} สำหรับ ${guestCount} ท่าน เรียบร้อยแล้ว!`
-                    );
-                    handleCloseBooking();
-                  }, 400);
-                }}
-              >
-                ตรวจรายการ
-              </button>
+              {bookingConfirmed ? (
+                <Link
+                  href="/bookings"
+                  className="drawer-checkout-btn"
+                  style={{ textAlign: 'center', textDecoration: 'none' }}
+                >
+                  ดูทริปของฉัน
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className="drawer-checkout-btn"
+                  disabled={busy || (activeBooking.departures.length > 0 && !selectedDepartureId)}
+                  onClick={handleConfirmBooking}
+                >
+                  {busy ? 'กำลังบันทึก...' : 'ส่งคำขอจอง'}
+                </button>
+              )}
             </div>
           </div>
         </div>

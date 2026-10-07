@@ -20,18 +20,15 @@ try {
   await db.query('BEGIN');
   await db.query("SELECT pg_advisory_xact_lock(hashtextextended('thinthai-demo-products', 0))");
 
-  const merchant = (
-    await db.query("SELECT id FROM app_users WHERE auth_subject='seed:merchant'")
-  ).rows[0];
+  const merchant = (await db.query("SELECT id FROM app_users WHERE auth_subject='seed:merchant'"))
+    .rows[0];
   if (!merchant) throw Error('Run db:seed first');
 
   // Find or setup food and craft stores
-  const foodStore = (
-    await db.query("SELECT id FROM stores WHERE name='ครัวถิ่นเหนือ' LIMIT 1")
-  ).rows[0];
-  const craftStore = (
-    await db.query("SELECT id FROM stores WHERE name='งานผ้าชุมชน' LIMIT 1")
-  ).rows[0];
+  const foodStore = (await db.query("SELECT id FROM stores WHERE name='ครัวถิ่นเหนือ' LIMIT 1"))
+    .rows[0];
+  const craftStore = (await db.query("SELECT id FROM stores WHERE name='งานผ้าชุมชน' LIMIT 1"))
+    .rows[0];
 
   if (!foodStore || !craftStore) throw Error('Run db:seed first');
 
@@ -85,10 +82,10 @@ try {
   ];
 
   for (const item of sampleProducts) {
-    const existing = await db.query(
-      'SELECT id FROM products WHERE store_id=$1 AND name=$2',
-      [item.storeId, item.name],
-    );
+    const existing = await db.query('SELECT id FROM products WHERE store_id=$1 AND name=$2', [
+      item.storeId,
+      item.name,
+    ]);
     if (!existing.rowCount) {
       await db.query(
         `INSERT INTO products(id, store_id, name, description, category, fulfillment, price_satang, stock, reserved, active)

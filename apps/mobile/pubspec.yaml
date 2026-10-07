@@ -1,10 +1,10 @@
 name: thinthai_mobile
-description: "ThinThai - แพลตฟอร์มท่องเที่ยวชุมชนเชิงสร้างสรรค์ (เที่ยวไทยให้ถึงถิ่น)"
-publish_to: "none"
+description: 'ThinThai - แพลตฟอร์มท่องเที่ยวชุมชนเชิงสร้างสรรค์ (เที่ยวไทยให้ถึงถิ่น)'
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:

@@ -1,11 +1,15 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import PublicHeader from '../public-header';
 import Landscape from '../landscape';
 import { categories, money, tripDate, tripApi, type Trip } from '../trip-shared';
 
 export default function TripsClient({ initialTrips = [] }: { initialTrips?: Trip[] }) {
+  const searchParams = useSearchParams();
+  const urlCat = searchParams?.get('cat') || searchParams?.get('category') || '';
+
   const [rows, setRows] = useState<Trip[]>(initialTrips),
     [loading, setLoading] = useState(initialTrips.length === 0),
     [error, setError] = useState(''),
@@ -19,6 +23,22 @@ export default function TripsClient({ initialTrips = [] }: { initialTrips?: Trip
     [phone, setPhone] = useState(''),
     [busy, setBusy] = useState(false);
   const nonce = useRef('');
+
+  useEffect(() => {
+    if (urlCat) {
+      if (urlCat in categories) {
+        setCategory(urlCat);
+      } else if (urlCat === 'ธรรมชาติ') {
+        setCategory('nature');
+      } else if (urlCat === 'วัฒนธรรม' || urlCat === 'วิถี' || urlCat === 'กิจกรรม') {
+        setCategory('culture');
+      } else if (urlCat === 'อาหาร') {
+        setCategory('food');
+      } else if (urlCat === 'งานฝีมือ') {
+        setCategory('craft');
+      }
+    }
+  }, [urlCat]);
 
   async function load() {
     setLoading(true);

@@ -9,9 +9,9 @@ export default function PublicHeader() {
       </div>
 
       <nav className="header-nav" aria-label="สำรวจ ThinThai">
-        <Link href="/trips">เที่ยว</Link>
-        <Link href="/trips?cat=กิจกรรม">กิจกรรม</Link>
-        <Link href="/catalog">ของฝาก</Link>
+        <Link href="/trips">ทริปชุมชน</Link>
+        <Link href="/trips?cat=culture">วิถีชุมชน</Link>
+        <Link href="/catalog">ของดีชุมชน</Link>
         <Link href="/bookings">ทริปของฉัน</Link>
       </nav>
 
