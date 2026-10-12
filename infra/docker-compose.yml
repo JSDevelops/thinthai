@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: thinthai_postgres
+    environment:
+      POSTGRES_USER: thinthai
+      POSTGRES_PASSWORD: thinthai_secure_dev_password
+      POSTGRES_DB: thinthai_dev
+    ports:
+      - "55433:5432"
+    volumes:
+      - thinthai_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thinthai -d thinthai_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: thinthai_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://thinthai:thinthai_secure_dev_password@postgres:5432/thinthai_dev
+      API_HOST: "0.0.0.0"
+      API_PORT: 4200
+      WEB_ORIGIN: http://localhost:3200
+      ALLOW_EXTERNAL_ORIGIN: "true"
+      NODE_ENV: development
+      ENABLE_SANDBOX_PAYMENTS: "true"
+      PAYMENT_WEBHOOK_SECRET: dev_local_webhook_secret_key_12345
+    ports:
+      - "4200:4200"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.worker
+    container_name: thinthai_worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://thinthai:thinthai_secure_dev_password@postgres:5432/thinthai_dev
+      WORKER_INTERVAL_SECONDS: 30
+      NODE_ENV: development
+    restart: unless-stopped
+
+volumes:
+  thinthai_pgdata:

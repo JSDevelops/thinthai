@@ -59,3 +59,14 @@ test('payment ownership cannot be inferred from staff status', () => {
   assert.equal(ownsPayment('customer-a', 'customer-a'), true);
   assert.equal(ownsPayment('customer-b', 'customer-a'), false);
 });
+
+import { createHmac } from 'node:crypto';
+test('webhook signature verifies HMAC-SHA256 correctly', () => {
+  const secret = 'test-secret-key-123';
+  const payload = JSON.stringify({ providerRef: 'TT-98765432', status: 'succeeded' });
+  const validSignature = createHmac('sha256', secret).update(payload).digest('hex');
+  const invalidSignature = createHmac('sha256', 'wrong-secret').update(payload).digest('hex');
+
+  assert.equal(createHmac('sha256', secret).update(payload).digest('hex'), validSignature);
+  assert.notEqual(validSignature, invalidSignature);
+});

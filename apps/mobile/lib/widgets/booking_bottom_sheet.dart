@@ -5,6 +5,7 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
 import '../models/trip_model.dart';
 import '../state/app_state.dart';
+import '../services/api_service.dart';
 import 'promptpay_qr_card.dart';
 
 class BookingBottomSheet extends StatefulWidget {
@@ -32,19 +33,60 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   bool _isProcessing = false;
   bool _showPromptPayView = false;
 
-  void _onProceedToPay() {
+  PaymentIntentResponse? _activePayment;
+  String? _backendBookingId;
+
+  void _onProceedToPay() async {
     HapticFeedback.mediumImpact();
-    if (_paymentMethod == 'promptpay') {
-      setState(() => _showPromptPayView = true);
-    } else {
-      _executeBooking();
+    setState(() => _isProcessing = true);
+
+    // Find departure or fallback
+    String departureId = '00000000-0000-0000-0000-000000000001';
+    if (widget.trip.departures.isNotEmpty) {
+      final active = widget.trip.departures.firstWhere(
+        (d) => d.active && d.remaining >= _guestCount,
+        orElse: () => widget.trip.departures.first,
+      );
+      departureId = active.id;
+    }
+
+    final total = widget.trip.pricePerPerson * _guestCount;
+    final totalSatang = total * 100;
+
+    // Call real API
+    final result = await ApiService().createBooking(
+      departureId: departureId,
+      seats: _guestCount,
+      expectedPriceSatang: totalSatang,
+      contactName: 'ผู้เดินทางผ่าน ThinThai Mobile',
+      phone: '0812345678',
+    );
+
+    if (mounted) {
+      setState(() {
+        _isProcessing = false;
+        _backendBookingId = result.bookingId;
+        _activePayment = result.payment;
+      });
+
+      if (_paymentMethod == 'promptpay') {
+        setState(() => _showPromptPayView = true);
+      } else {
+        _executeBooking();
+      }
     }
   }
 
   void _executeBooking() async {
     setState(() => _isProcessing = true);
     HapticFeedback.mediumImpact();
-    await Future.delayed(const Duration(milliseconds: 900));
+
+    // If active sandbox payment exists, confirm it on backend
+    if (_activePayment != null) {
+      await ApiService().simulatePayment(_activePayment!.id);
+    }
+
+    await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
     final total = widget.trip.pricePerPerson * _guestCount;
@@ -142,7 +184,11 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             // PromptPay Payment View
             PromptPayQRCard(
               amount: totalAmount,
-              referenceNo: 'TT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
+              referenceNo: _activePayment?.providerRef ??
+                  'TT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
+              qrPayload: _activePayment?.qrPayload,
+              isSandbox: _activePayment?.isSandbox ?? true,
+              onSimulatePay: _isProcessing ? null : _executeBooking,
             ),
             const SizedBox(height: 18),
             Row(

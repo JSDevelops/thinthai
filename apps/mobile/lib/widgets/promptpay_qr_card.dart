@@ -8,11 +8,17 @@ import 'haptic_tap.dart';
 class PromptPayQRCard extends StatelessWidget {
   final int amount;
   final String referenceNo;
+  final String? qrPayload;
+  final bool isSandbox;
+  final VoidCallback? onSimulatePay;
 
   const PromptPayQRCard({
     super.key,
     required this.amount,
     required this.referenceNo,
+    this.qrPayload,
+    this.isSandbox = true,
+    this.onSimulatePay,
   });
 
   @override
@@ -70,10 +76,10 @@ class PromptPayQRCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const Text(
-                  'ThinThai Verified',
+                Text(
+                  isSandbox ? 'Sandbox Mode' : 'ThinThai Verified',
                   style: TextStyle(
-                    color: AppColors.gold,
+                    color: isSandbox ? const Color(0xFFFFB74D) : AppColors.gold,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -81,6 +87,28 @@ class PromptPayQRCard extends StatelessWidget {
               ],
             ),
           ),
+
+          if (isSandbox)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+              color: const Color(0xFFFFF3E0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.info_outline, size: 14, color: Color(0xFFE65100)),
+                  const SizedBox(width: 6),
+                  Text(
+                    'โหมดทดลองชำระเงิน (Sandbox) — ยังไม่มีการตัดเงินจริง',
+                    style: AppTypography.labelSmall.copyWith(
+                      color: const Color(0xFFE65100),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           Padding(
             padding: const EdgeInsets.all(20),
@@ -122,38 +150,71 @@ class PromptPayQRCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // Save QR Button
-                HapticTap(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('บันทึกรูปภาพ QR Code พร้อมเพย์ลงเครื่องแล้ว'),
-                        duration: Duration(seconds: 2),
+                // Actions: Save QR and (if Sandbox) Simulate Pay
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    HapticTap(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('บันทึกรูปภาพ QR Code พร้อมเพย์ลงเครื่องแล้ว'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryContainer,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.download_rounded, size: 16, color: AppColors.primaryDark),
+                            const SizedBox(width: 4),
+                            Text(
+                              'บันทึก QR',
+                              style: AppTypography.labelLarge.copyWith(
+                                fontSize: 12,
+                                color: AppColors.primaryDark,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.download_rounded, size: 18, color: AppColors.primaryDark),
-                        const SizedBox(width: 6),
-                        Text(
-                          'บันทึกภาพ QR Code',
-                          style: AppTypography.labelLarge.copyWith(
-                            fontSize: 13,
-                            color: AppColors.primaryDark,
+                    if (isSandbox && onSimulatePay != null) ...[
+                      const SizedBox(width: 10),
+                      HapticTap(
+                        onTap: onSimulatePay,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2E7D32),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.check_circle_outline, size: 16, color: Colors.white),
+                              const SizedBox(width: 4),
+                              Text(
+                                'ยืนยันจ่ายเงินจำลอง',
+                                style: AppTypography.labelLarge.copyWith(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),

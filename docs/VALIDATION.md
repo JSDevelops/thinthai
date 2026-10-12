@@ -64,3 +64,35 @@ API integration ผ่าน 18 กรณี และ UI ลงทะเบี�
 - ภาพปัจจุบัน: design/previews/auth
 
 ยังไม่ได้ทดสอบอุปกรณ์จริงทุกระบบ, Safari, load test, production deployment หรือการชำระเงินจริง ระบบยืนยันอีเมล กู้บัญชี และ MFA ยังไม่มี
+
+---
+
+# ผลการพัฒนาและตรวจรับ — 12 ตุลาคม 2026
+
+ทำครบ 4 ส่วนหลักตามแผนพัฒนาสู่การใช้งานจริง:
+
+1. **Background Worker Service (`@thinthai/worker`):**
+   - พัฒนาบริการประมวลผลงานเบื้องหลัง `apps/worker` เชื่อมต่อ PostgreSQL
+   - ระบบ **Hold Sweeper**: คืนที่นั่งทริป (`departures.used`) คืนสต๊อกสินค้า (`products.reserved`) และปรับสถานะรายการชำระเงินที่หมดอายุเป็น `failed` อัตโนมัติใน Database Transaction
+   - รองรับการทำงานทั้งแบบ Daemon Service (`npm run worker:start`), พัฒนา (`npm run worker:dev`), และ One-shot Cron (`npm run worker:sweep`)
+
+2. **ระบบชำระเงินและ Webhook Gateway Architecture (`apps/api`):**
+   - เพิ่ม Webhook Handler `POST /api/v1/payments/webhook/:provider`
+   - ตรวจสอบลายเซ็นความปลอดภัย HMAC-SHA256 (`PAYMENT_WEBHOOK_SECRET`)
+   - ระบบตัดยอดแบบ Idempotent ป้องกันการปรับสถานะและลงบัญชีซ้ำ
+   - ยกเว้นการตรวจสอบ Web Origin สำหรับ Webhook จากผู้ให้บริการชำระเงินภายนอก
+
+3. **แอปมือถือ Flutter (`apps/mobile`):**
+   - เพิ่ม `ApiService` เต็มรูปแบบ: จองทริปจริง (`createBooking`), สร้าง Payment Intent (`createPaymentIntent`), และจำลองชำระเงิน (`simulatePayment`)
+   - ปรับปรุง `BookingBottomSheet` เชื่อมข้อมูลรอบการเดินทาง (Departures) จาก API จริง
+   - ปรับปรุง `PromptPayQRCard` แสดงป้ายเตือน Sandbox Mode ชัดเจน พร้อมปุ่มทดสอบชำระเงินสำหรับนักพัฒนา/QA
+
+4. **โครงสร้างพื้นฐานและการ Deploy (`infra/`):**
+   - จัดทำ Multi-stage `Dockerfile.api` และ `Dockerfile.worker`
+   - จัดทำ `docker-compose.yml` สำหรับรัน PostgreSQL 16, API, และ Worker พร้อมระบบ Healthcheck
+   - อัปเดตแม่แบบ `.env.example`, `env.staging.example`, และ `env.production.example`
+
+5. **ผลการทดสอบระบบ (Validation):**
+   - `npm run test` (Unit & Security Access Tests): **7/7 ผ่านสมบูรณ์ 100%**
+   - `npm run build` (API + Worker + Web): **ผ่านสมบูรณ์ 100%** โดยไม่มีข้อผิดพลาด
+

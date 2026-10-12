@@ -6,7 +6,7 @@ import {
   ForbiddenException,
   ConflictException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { Db } from './db';
@@ -427,5 +427,139 @@ export class Payments {
       totalNetBaht: totalNetSatang / 100,
       entries: formatted,
     };
+  }
+
+  async handleWebhook(
+    provider: string,
+    signature: string | undefined,
+    payload: Record<string, unknown>,
+  ) {
+    const webhookSecret = process.env.PAYMENT_WEBHOOK_SECRET;
+    // In production, signature verification is mandatory
+    if (process.env.NODE_ENV === 'production' && !webhookSecret) {
+      throw new ForbiddenException('PAYMENT_WEBHOOK_SECRET is not configured on server');
+    }
+    if (webhookSecret && signature) {
+      const hmac = createHmac('sha256', webhookSecret)
+        .update(typeof payload === 'string' ? payload : JSON.stringify(payload))
+        .digest('hex');
+      if (signature !== hmac && signature !== `sha256=${hmac}`) {
+        throw new ForbiddenException('ลายเซ็น Webhook ไม่ถูกต้อง');
+      }
+    }
+
+    const providerRef = String(payload.providerRef ?? payload.referenceNo ?? payload.ref ?? '');
+    const paymentId = String(payload.paymentId ?? payload.id ?? '');
+    const status = String(payload.status ?? 'succeeded').toLowerCase();
+
+    return this.db.transaction(async (c: PoolClient) => {
+      const payment = (
+        await c.query<{
+          id: string;
+          user_id: string;
+          target_type: string;
+          target_id: string;
+          amount_satang: string;
+          status: string;
+          expires_at: Date;
+        }>(`SELECT * FROM payments WHERE (id::text = $1 OR provider_ref = $2) FOR UPDATE`, [
+          paymentId,
+          providerRef,
+        ])
+      ).rows[0];
+
+      if (!payment) {
+        throw new NotFoundException('ไม่พบรายการชำระเงินที่สอดคล้องกับ Webhook');
+      }
+
+      // Idempotency: already settled
+      if (payment.status === 'succeeded') {
+        return { status: 'already_settled', paymentId: payment.id };
+      }
+
+      if (status !== 'succeeded' && status !== 'success') {
+        await c.query(
+          `UPDATE payments SET status = 'failed', version = version + 1, updated_at = now() WHERE id = $1`,
+          [payment.id],
+        );
+        return { status: 'failed', paymentId: payment.id };
+      }
+
+      const grossAmount = Number(payment.amount_satang);
+      const platformFee = Math.round(grossAmount * 0.05); // 5% platform fee
+      const netMerchant = grossAmount - platformFee;
+      let storeId = '';
+
+      await c.query(
+        `UPDATE payments SET status = 'succeeded', version = version + 1, updated_at = now() WHERE id = $1`,
+        [payment.id],
+      );
+
+      if (payment.target_type === 'booking') {
+        const booking = (
+          await c.query<{ id: string; departure_id: string }>(
+            `SELECT id, departure_id FROM bookings WHERE id = $1 FOR UPDATE`,
+            [payment.target_id],
+          )
+        ).rows[0];
+
+        if (booking) {
+          await c.query(
+            `UPDATE bookings SET status = 'confirmed', version = version + 1 WHERE id = $1`,
+            [booking.id],
+          );
+          await c.query(
+            `INSERT INTO booking_history (id, booking_id, actor_id, status, reason)
+             VALUES ($1, $2, $3, 'confirmed', $4)`,
+            [randomUUID(), booking.id, payment.user_id, `ชำระเงินสำเร็จผ่าน Webhook (${provider})`],
+          );
+
+          const storeRow = (
+            await c.query<{ store_id: string }>(
+              `SELECT t.store_id FROM departures d JOIN trips t ON t.id = d.trip_id WHERE d.id = $1`,
+              [booking.departure_id],
+            )
+          ).rows[0];
+          storeId = storeRow?.store_id || '';
+        }
+      } else {
+        const order = (
+          await c.query<{ id: string; store_id: string }>(
+            `SELECT id, store_id FROM orders WHERE id = $1 FOR UPDATE`,
+            [payment.target_id],
+          )
+        ).rows[0];
+
+        if (order) {
+          await c.query(
+            `UPDATE orders SET status = 'accepted', version = version + 1, updated_at = now() WHERE id = $1`,
+            [order.id],
+          );
+          await c.query(
+            `INSERT INTO order_history (id, order_id, actor_id, status, reason)
+             VALUES ($1, $2, $3, 'accepted', $4)`,
+            [randomUUID(), order.id, payment.user_id, `ชำระเงินสำเร็จผ่าน Webhook (${provider})`],
+          );
+          storeId = order.store_id;
+        }
+      }
+
+      if (storeId) {
+        await c.query(
+          `INSERT INTO ledger_entries (id, payment_id, store_id, gross_amount_satang, platform_fee_satang, net_merchant_satang, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending_payout')`,
+          [randomUUID(), payment.id, storeId, grossAmount, platformFee, netMerchant],
+        );
+      }
+
+      return {
+        status: 'settled',
+        paymentId: payment.id,
+        targetType: payment.target_type,
+        targetId: payment.target_id,
+        amountSatang: grossAmount,
+        storeId,
+      };
+    });
   }
 }

@@ -26,6 +26,24 @@ class ItineraryDay {
   });
 }
 
+class TripDepartureModel {
+  final String id;
+  final DateTime startsAt;
+  final int capacity;
+  final int remaining;
+  final bool active;
+  final int version;
+
+  const TripDepartureModel({
+    required this.id,
+    required this.startsAt,
+    required this.capacity,
+    required this.remaining,
+    required this.active,
+    required this.version,
+  });
+}
+
 class TripModel {
   final String id;
   final String title;
@@ -52,6 +70,7 @@ class TripModel {
   final bool isVerifiedHost;
   final int impactTreeCount;
   final int localIncomePercentage;
+  final List<TripDepartureModel> departures;
 
   const TripModel({
     required this.id,
@@ -79,5 +98,6 @@ class TripModel {
     this.isVerifiedHost = true,
     this.impactTreeCount = 5,
     this.localIncomePercentage = 70,
+    this.departures = const [],
   });
 }

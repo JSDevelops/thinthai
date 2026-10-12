@@ -415,6 +415,21 @@ class Api {
   @Get('stores/:id/ledger') async storeLedger(@Req() req: Request, @Param('id') id: string) {
     return this.payments.storeLedger(await this.identity.actor(req), z.uuid().parse(id));
   }
+  @Post('payments/webhook/:provider') async paymentWebhook(
+    @Req() req: Request,
+    @Param('provider') provider: string,
+    @Body() body: unknown,
+  ) {
+    const signature =
+      (req.headers['x-signature'] as string) ??
+      (req.headers['x-hub-signature-256'] as string) ??
+      (req.headers['x-webhook-signature'] as string);
+    return this.payments.handleWebhook(
+      provider,
+      signature,
+      typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {},
+    );
+  }
   @Post('jobs/sweep-holds') async sweepHolds(@Req() req: Request) {
     await this.identity.actor(req);
     return this.holds.sweepExpired();
@@ -446,8 +461,10 @@ async function start() {
     if (!/^\/api\/v1\/products\/[a-f0-9-]{36}\/image$/.test(req.path)) {
       res.setHeader('Cache-Control', 'no-store');
     }
+    const isWebhook = /^\/api\/v1\/payments\/webhook\/[a-zA-Z0-9_-]+$/.test(req.path);
     if (
       !['GET', 'HEAD'].includes(req.method) &&
+      !isWebhook &&
       (req.headers.origin !== origin ||
         req.headers['x-thinthai-action'] !== '1' ||
         !req.is('application/json'))
