@@ -278,7 +278,7 @@ test('local auth cannot accidentally start in production', () => {
     timeout: 10000,
   });
   assert.equal(p.status, 1);
-  assert.match(p.stderr, /Local development only/);
+  assert.match(p.stderr, /Production guard/);
 });
 const newStore = {
   name: 'ร้านทดสอบใหม่',
@@ -1471,4 +1471,97 @@ test('closed/past rounds and inactive trips reject new bookings without cancelli
     (await db.query('SELECT used FROM departures WHERE id=$1', [departure.id])).rows[0].used,
     2,
   );
+});
+test('payments, sandbox settlement, merchant ledger and hold expiration sweep', async () => {
+  await db.query("UPDATE departures SET starts_at=now()+interval '1 day' WHERE id=$1", [
+    departure.id,
+  ]);
+  // 1. Create a fresh booking
+  const bRes = await post(
+    'bookings',
+    {
+      departureId: departure.id,
+      seats: 1,
+      expectedPriceSatang: 70000,
+      contactName: 'ผู้จองทดสอบ',
+      phone: '0812345678',
+      requestKey: randomUUID(),
+    },
+    tripBuyer,
+  );
+  assert.equal(bRes.status, 201);
+  const booking = await bRes.json();
+  assert.ok(booking.id);
+  const bInitial = (await db.query('SELECT status FROM bookings WHERE id=$1', [booking.id]))
+    .rows[0];
+  assert.equal(bInitial.status, 'pending');
+
+  // 2. Create payment intent
+  const pRes = await post(
+    'payments',
+    { targetType: 'booking', targetId: booking.id, method: 'promptpay' },
+    tripBuyer,
+  );
+  assert.equal(pRes.status, 201);
+  const payment = await pRes.json();
+  assert.equal(payment.status, 'pending');
+  assert.equal(payment.amountSatang, 70000);
+  assert.ok(payment.qrPayload.startsWith('000201'));
+
+  // 3. Query payment details
+  const pGet = await get('payments/' + payment.id, tripBuyer);
+  assert.equal(pGet.status, 200);
+  assert.equal((await pGet.json()).status, 'pending');
+
+  // 4. Simulate payment success
+  const simRes = await post('payments/' + payment.id + '/simulate', {}, tripBuyer);
+  assert.equal(simRes.status, 201);
+  const simData = await simRes.json();
+  assert.equal(simData.status, 'succeeded');
+  assert.equal(simData.platformFeeSatang, 3500); // 5% platform fee
+  assert.equal(simData.netMerchantSatang, 66500); // 95% merchant payout
+
+  // 5. Verify booking is confirmed in database
+  const bDb = (await db.query('SELECT status FROM bookings WHERE id=$1', [booking.id])).rows[0];
+  assert.equal(bDb.status, 'confirmed');
+
+  // 6. Verify merchant ledger
+  const lRes = await get('stores/' + productStore.id + '/ledger', tripMerchant);
+  assert.equal(lRes.status, 200);
+  const ledger = await lRes.json();
+  assert.ok(ledger.totalGrossSatang >= 70000);
+  assert.ok(ledger.entries.length >= 1);
+
+  // 7. Test hold expiration sweep
+  await db.query('UPDATE departures SET capacity=10 WHERE id=$1', [departure.id]);
+  const b2Res = await post(
+    'bookings',
+    {
+      departureId: departure.id,
+      seats: 1,
+      expectedPriceSatang: 70000,
+      contactName: 'ผู้จองหมดเวลา',
+      phone: '0812345678',
+      requestKey: randomUUID(),
+    },
+    tripBuyer,
+  );
+  assert.equal(b2Res.status, 201);
+  const booking2 = await b2Res.json();
+  assert.ok(booking2.id);
+
+  // Manually age the booking past expires_at
+  await db.query("UPDATE bookings SET expires_at=now()-interval '1 minute' WHERE id=$1", [
+    booking2.id,
+  ]);
+
+  // Sweep expired holds
+  const sweepRes = await post('jobs/sweep-holds', {}, tripBuyer);
+  assert.equal(sweepRes.status, 201);
+  const sweepData = await sweepRes.json();
+  assert.ok(sweepData.expiredBookings >= 1);
+
+  // Verify booking was cancelled and capacity restored
+  const b2Db = (await db.query('SELECT status FROM bookings WHERE id=$1', [booking2.id])).rows[0];
+  assert.equal(b2Db.status, 'cancelled');
 });

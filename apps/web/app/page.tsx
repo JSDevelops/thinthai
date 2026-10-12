@@ -676,10 +676,25 @@ export default function Home() {
                   🎉 บันทึกคำขอจองสำเร็จแล้ว! (รหัส: {confirmedBookingId.slice(0, 8)})
                   <br />
                   <small style={{ color: '#2e7d32' }}>
-                    จำนวน {guestCount} ท่าน · บันทึกในระบบหลังบ้านแล้ว
+                    จำนวน {guestCount} ท่าน · ระบบกันที่นั่งให้แล้ว 30 นาที
                   </small>
-                  <br />
-                  <Link href="/bookings">ดูสถานะการจองใน &quot;ทริปของฉัน&quot; →</Link>
+                  <div style={{ marginTop: '10px' }}>
+                    <Link
+                      href="/bookings"
+                      style={{
+                        display: 'inline-block',
+                        background: '#00695c',
+                        color: '#fff',
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        textDecoration: 'none',
+                        fontWeight: 700,
+                        fontSize: '13px',
+                      }}
+                    >
+                      💳 ดำเนินการชำระเงิน (PromptPay) →
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>

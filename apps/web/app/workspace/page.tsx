@@ -7,6 +7,7 @@ import ProductsPanel from '../products-panel';
 import Brand from '../brand';
 import TripsPanel from '../trips-panel';
 import OrdersPanel from '../orders-panel';
+import LedgerPanel from '../ledger-panel';
 type Account = { id: string; name: string; role: string };
 type Store = {
   id: string;
@@ -248,6 +249,15 @@ export default function Page() {
               ทริปและการจอง
             </button>
           )}
+          {me && me.role !== 'USER' && (
+            <button
+              disabled={busy}
+              aria-current={tab === 'ledger' ? 'page' : undefined}
+              onClick={() => changeTab('ledger')}
+            >
+              รายได้ชุมชน (Ledger)
+            </button>
+          )}
         </nav>
         <div className="aside-note">
           ชุมชนเติบโต
@@ -270,11 +280,13 @@ export default function Page() {
                       ? isAdmin
                         ? 'ตรวจคำขอเปิดร้าน'
                         : 'สมัครผู้ประกอบการ'
-                      : tab === 'delivery'
-                        ? 'พื้นที่จัดส่งอาหาร'
-                        : tab === 'stores'
-                          ? 'ร้านค้าในความดูแล'
-                          : 'ยินดีต้อนรับสู่ ThinThai'}
+                      : tab === 'ledger'
+                        ? 'รายได้และบัญชีชุมชน'
+                        : tab === 'delivery'
+                          ? 'พื้นที่จัดส่งอาหาร'
+                          : tab === 'stores'
+                            ? 'ร้านค้าในความดูแล'
+                            : 'ยินดีต้อนรับสู่ ThinThai'}
             </h1>
           </div>
           {me && (
@@ -457,6 +469,8 @@ export default function Page() {
           <ProductsPanel stores={stores} />
         ) : tab === 'applications' ? (
           <ApplicationsPanel review={!!isAdmin} onRefresh={load} />
+        ) : tab === 'ledger' ? (
+          <LedgerPanel stores={stores} />
         ) : (
           <>
             <section className="stats">

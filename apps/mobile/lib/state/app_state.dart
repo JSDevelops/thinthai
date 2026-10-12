@@ -3,13 +3,37 @@ import '../data/mock_data.dart';
 import '../models/trip_model.dart';
 import '../models/community_model.dart';
 import '../models/passport_badge_model.dart';
+import '../services/api_service.dart';
 
 class AppState extends ChangeNotifier {
   static final AppState _instance = AppState._internal();
   factory AppState() => _instance;
   AppState._internal() {
+    _trips.addAll(MockData.featuredTrips);
     _bookings.addAll(MockData.initialBookings);
     _badges.addAll(MockData.passportBadges);
+    loadTrips();
+  }
+
+  // Live Trips with API Sync
+  final List<TripModel> _trips = [];
+  List<TripModel> get trips => List.unmodifiable(_trips);
+  bool _isLoadingTrips = false;
+  bool get isLoadingTrips => _isLoadingTrips;
+
+  Future<void> loadTrips() async {
+    _isLoadingTrips = true;
+    notifyListeners();
+    try {
+      final fresh = await ApiService().fetchTrips();
+      if (fresh.isNotEmpty) {
+        _trips.clear();
+        _trips.addAll(fresh);
+      }
+    } finally {
+      _isLoadingTrips = false;
+      notifyListeners();
+    }
   }
 
   // Bookmarks

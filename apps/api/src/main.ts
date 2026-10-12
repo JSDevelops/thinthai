@@ -45,6 +45,8 @@ import {
 } from './applications';
 import { createStore, updateStore, deliveryInput, checkInput } from './store-input';
 import { canConfigureDelivery } from './access';
+import { Holds } from './holds';
+import { Payments, paymentCreateInput } from './payments';
 config({ path: resolve(__dirname, '../../../.env'), quiet: true });
 const email = z.string().trim().toLowerCase().email().max(254);
 const password = z.string().min(15).max(128);
@@ -85,6 +87,8 @@ class Api {
     @Inject(Products) private readonly products: Products,
     @Inject(Orders) private readonly orders: Orders,
     @Inject(Trips) private readonly trips: Trips,
+    @Inject(Holds) private readonly holds: Holds,
+    @Inject(Payments) private readonly payments: Payments,
   ) {}
   @Get('applications/areas') async applicationAreas(@Req() req: Request) {
     await this.identity.actor(req);
@@ -393,10 +397,32 @@ class Api {
     if (!['ADMIN', 'SUPER_ADMIN'].includes(a.role)) throw new ForbiddenException();
     return (await this.stores.list(a)).filter((s) => canConfigureDelivery(a, s));
   }
+  @Post('payments') async createPayment(@Req() req: Request, @Body() body: unknown) {
+    return this.payments.createIntent(
+      await this.identity.actor(req),
+      paymentCreateInput.parse(body),
+    );
+  }
+  @Get('payments/:id') async getPayment(@Req() req: Request, @Param('id') id: string) {
+    return this.payments.get(await this.identity.actor(req), z.uuid().parse(id));
+  }
+  @Post('payments/:id/simulate') async simulatePayment(
+    @Req() req: Request,
+    @Param('id') id: string,
+  ) {
+    return this.payments.simulatePay(await this.identity.actor(req), z.uuid().parse(id));
+  }
+  @Get('stores/:id/ledger') async storeLedger(@Req() req: Request, @Param('id') id: string) {
+    return this.payments.storeLedger(await this.identity.actor(req), z.uuid().parse(id));
+  }
+  @Post('jobs/sweep-holds') async sweepHolds(@Req() req: Request) {
+    await this.identity.actor(req);
+    return this.holds.sweepExpired();
+  }
 }
 @Module({
   controllers: [Api],
-  providers: [Db, Identity, Stores, Applications, Products, Orders, Trips],
+  providers: [Db, Identity, Stores, Applications, Products, Orders, Trips, Holds, Payments],
 })
 class App {}
 async function start() {
@@ -442,6 +468,10 @@ async function start() {
   });
   app.useGlobalFilters(new Errors());
   app.enableShutdownHooks();
+  const holds = app.get(Holds);
+  setInterval(() => {
+    holds.sweepExpired().catch((e) => console.error('Hold sweep error', e));
+  }, 60000).unref();
   const host =
     process.env.API_HOST ?? (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
   await app.listen(Number(process.env.API_PORT ?? 4200), host);
