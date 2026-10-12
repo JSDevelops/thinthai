@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { Db } from './db';
 import { canManage, type Actor } from './access';
 import { Holds } from './holds';
+import { ownsPayment, sandboxPaymentsEnabled } from './payment-policy';
 
 export const paymentCreateInput = z
   .object({
@@ -37,7 +38,19 @@ export class Payments {
     return `00020101021229370016A000000677010111011300668000000005802TH5303764${amountTag}62${ref.length.toString().padStart(2, '0')}${ref}6304`;
   }
 
+  private requireSandbox() {
+    if (
+      !sandboxPaymentsEnabled({
+        NODE_ENV: process.env.NODE_ENV,
+        ENABLE_SANDBOX_PAYMENTS: process.env.ENABLE_SANDBOX_PAYMENTS,
+      })
+    ) {
+      throw new ForbiddenException('ระบบชำระเงินจำลองปิดอยู่');
+    }
+  }
+
   async createIntent(a: Actor, input: PaymentCreateInput) {
+    this.requireSandbox();
     // 1. Run sweep first to ensure stale holds are expired
     await this.holds.sweepExpired();
 
@@ -65,7 +78,7 @@ export class Payments {
         ).rows[0];
 
         if (!booking) throw new NotFoundException('ไม่พบรายการจอง');
-        if (booking.buyer_id !== a.id && !['ADMIN', 'SUPER_ADMIN'].includes(a.role)) {
+        if (!ownsPayment(a.id, booking.buyer_id)) {
           throw new ForbiddenException('ไม่มีสิทธิ์ชำระเงินสำหรับรายการจองนี้');
         }
         if (booking.status !== 'pending') {
@@ -106,7 +119,7 @@ export class Payments {
         ).rows[0];
 
         if (!order) throw new NotFoundException('ไม่พบคำสั่งซื้อ');
-        if (order.buyer_id !== a.id && !['ADMIN', 'SUPER_ADMIN'].includes(a.role)) {
+        if (!ownsPayment(a.id, order.buyer_id)) {
           throw new ForbiddenException('ไม่มีสิทธิ์ชำระเงินสำหรับคำสั่งซื้อนี้');
         }
         if (order.status !== 'placed') {
@@ -197,6 +210,7 @@ export class Payments {
   }
 
   async simulatePay(a: Actor, paymentId: string) {
+    this.requireSandbox();
     return this.db.transaction(async (c: PoolClient) => {
       const payment = (
         await c.query<{
@@ -211,6 +225,9 @@ export class Payments {
       ).rows[0];
 
       if (!payment) throw new NotFoundException('ไม่พบรายการชำระเงิน');
+      if (!ownsPayment(a.id, payment.user_id)) {
+        throw new ForbiddenException('ไม่มีสิทธิ์ยืนยันรายการชำระเงินนี้');
+      }
       if (payment.status !== 'pending') {
         throw new BadRequestException(`รายการนี้อยู่ในสถานะ ${payment.status} แล้ว`);
       }
@@ -318,7 +335,7 @@ export class Payments {
     ).rows[0];
 
     if (!payment) throw new NotFoundException('ไม่พบข้อมูลการชำระเงิน');
-    if (payment.user_id !== a.id && !['ADMIN', 'SUPER_ADMIN'].includes(a.role)) {
+    if (!ownsPayment(a.id, payment.user_id)) {
       throw new ForbiddenException();
     }
 

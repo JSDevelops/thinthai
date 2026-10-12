@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import PublicHeader from '../public-header';
+
 type Product = {
   id: string;
   storeId: string;
@@ -13,12 +14,40 @@ type Product = {
   storeName: string;
   hasImage: boolean;
   version: number;
+  category?: string;
 };
+
 const methods: Record<string, string> = {
   instant_food_delivery: 'ส่งอาหารทันที',
   parcel_delivery: 'ส่งพัสดุ',
   pickup: 'รับที่ร้าน',
 };
+
+const PRODUCT_IMAGES: Record<string, string> = {
+  กระเป๋าสานจากกก:
+    'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?auto=format&fit=crop&w=600&q=80',
+  ผ้าฝ้ายย้อมคราม:
+    'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=600&q=80',
+  แก้วเซรามิกแฮนด์เมด:
+    'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=600&q=80',
+  ชาใบดอยเชียงใหม่:
+    'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80',
+  ผ้าคลุมไหล่ทอมือย้อมครามธรรมชาติ:
+    'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=600&q=80',
+  ข้าวซอยไก่สูตรโบราณ:
+    'https://images.unsplash.com/photo-1559847844-5315695dadae?auto=format&fit=crop&w=600&q=80',
+  'เซ็ตน้ำพริกหนุ่ม แคบหมูไร้มัน':
+    'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80',
+};
+
+function getProductPhoto(p: Product): string {
+  if (p.hasImage) return `/api/v1/products/${p.id}/image?v=${p.version}`;
+  if (PRODUCT_IMAGES[p.name]) return PRODUCT_IMAGES[p.name];
+  if (p.category === 'craft')
+    return 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80';
+  return 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&w=600&q=80';
+}
+
 function getCurrentLocation(
   onSuccess: (lat: string, lng: string) => void,
   onError: (msg: string) => void,
@@ -37,111 +66,166 @@ function getCurrentLocation(
     { enableHighAccuracy: true, timeout: 10000 },
   );
 }
-function Card({ p, onAdd }: { p: Product; onAdd: (p: Product) => void }) {
+
+function Card({
+  p,
+  onAdd,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  p: Product;
+  onAdd: (p: Product) => void;
+  isFavorite: boolean;
+  onToggleFavorite: (id: string) => void;
+}) {
   const [lat, setLat] = useState(''),
     [lng, setLng] = useState(''),
     [result, setResult] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [showDeliveryCheck, setShowDeliveryCheck] = useState(false);
+
+  const photoUrl = getProductPhoto(p);
+
   return (
-    <article className="product-card">
-      {p.hasImage ? (
-        <img src={'/api/v1/products/' + p.id + '/image?v=' + p.version} alt={p.name} />
-      ) : (
-        <div className="product-placeholder">สินค้าชุมชน</div>
-      )}
-      <div className="store-body">
-        <span className="badge">{p.storeName}</span>
-        <h2>{p.name}</h2>
-        <p>{p.description}</p>
-        <strong>
-          {(p.priceSatang / 100).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
-        </strong>
-        <p>{methods[p.fulfillment]}</p>
-        <button type="button" onClick={() => onAdd(p)}>
-          เพิ่มลงตะกร้า
+    <article className="product-card catalog-product-card">
+      <div className="product-photo-wrap">
+        <img src={photoUrl} alt={p.name} className="catalog-product-img" loading="lazy" />
+        <button
+          type="button"
+          className={'catalog-heart-btn' + (isFavorite ? ' active' : '')}
+          onClick={() => onToggleFavorite(p.id)}
+          aria-label="บันทึกรายการโปรด"
+        >
+          {isFavorite ? '❤️' : '🤍'}
         </button>
-        {p.fulfillment === 'instant_food_delivery' && (
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setBusy(true);
-              try {
-                const res = await fetch('/api/v1/catalog/' + p.id + '/availability', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-ThinThai-Action': '1' },
-                  body: JSON.stringify({ point: { lat: Number(lat), lng: Number(lng) } }),
-                });
-                const data = await res.json();
-                setResult(res.ok ? data.reason : data.message);
-              } catch {
-                setResult('ตรวจพื้นที่ไม่สำเร็จ');
-              } finally {
-                setBusy(false);
-              }
-            }}
+      </div>
+
+      <div className="catalog-card-body">
+        <h2 className="catalog-product-title">{p.name}</h2>
+        <p className="catalog-store-name">{p.storeName}</p>
+
+        <div className="catalog-price-action-row">
+          <div className="catalog-price-wrap">
+            <strong className="catalog-price-val">
+              {Math.round(p.priceSatang / 100).toLocaleString('th-TH')} บาท
+            </strong>
+          </div>
+
+          <button
+            type="button"
+            className="catalog-circle-add-btn"
+            onClick={() => onAdd(p)}
+            aria-label="เพิ่มลงตะกร้า"
+            title="เพิ่มลงตะกร้า"
           >
-            <label>
-              ละติจูดจัดส่ง
-              <input
-                type="number"
-                required
-                step="any"
-                min="-90"
-                max="90"
-                value={lat}
-                onChange={(e) => {
-                  setLat(e.target.value);
-                  setResult('');
-                }}
-              />
-            </label>
-            <label>
-              ลองจิจูดจัดส่ง
-              <input
-                type="number"
-                required
-                step="any"
-                min="-180"
-                max="180"
-                value={lng}
-                onChange={(e) => {
-                  setLng(e.target.value);
-                  setResult('');
-                }}
-              />
-            </label>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button disabled={busy}>ตรวจพื้นที่จัดส่ง</button>
-              <button
-                type="button"
-                className="outline"
-                disabled={busy}
-                onClick={() => {
-                  getCurrentLocation(
-                    (newLat, newLng) => {
-                      setLat(newLat);
-                      setLng(newLng);
-                      setResult('ระบุตำแหน่งพิกัดปัจจุบันแล้ว');
-                    },
-                    (err) => setResult(err),
-                  );
+            <span className="plus-symbol">+</span>
+            <span className="sr-only">เพิ่มลงตะกร้า</span>
+          </button>
+        </div>
+
+        {p.fulfillment === 'instant_food_delivery' && (
+          <div className="delivery-check-accordion">
+            <button
+              type="button"
+              className="text-link-btn"
+              onClick={() => setShowDeliveryCheck(!showDeliveryCheck)}
+            >
+              {showDeliveryCheck ? '▲ ซ่อนตรวจพื้นที่' : '▼ ตรวจพื้นที่ส่งอาหาร'}
+            </button>
+            {showDeliveryCheck && (
+              <form
+                className="delivery-inline-form"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setBusy(true);
+                  try {
+                    const res = await fetch('/api/v1/catalog/' + p.id + '/availability', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'X-ThinThai-Action': '1' },
+                      body: JSON.stringify({ point: { lat: Number(lat), lng: Number(lng) } }),
+                    });
+                    const data = await res.json();
+                    setResult(res.ok ? data.reason : data.message);
+                  } catch {
+                    setResult('ตรวจพื้นที่ไม่สำเร็จ');
+                  } finally {
+                    setBusy(false);
+                  }
                 }}
               >
-                📍 ใช้พิกัดปัจจุบัน
-              </button>
-            </div>
-            <p role="status">{result}</p>
-          </form>
+                <div className="form-inline-inputs">
+                  <input
+                    type="number"
+                    required
+                    step="any"
+                    placeholder="ละติจูด"
+                    min="-90"
+                    max="90"
+                    value={lat}
+                    onChange={(e) => {
+                      setLat(e.target.value);
+                      setResult('');
+                    }}
+                  />
+                  <input
+                    type="number"
+                    required
+                    step="any"
+                    placeholder="ลองจิจูด"
+                    min="-180"
+                    max="180"
+                    value={lng}
+                    onChange={(e) => {
+                      setLng(e.target.value);
+                      setResult('');
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                  <button disabled={busy} className="mini-btn">
+                    ตรวจ
+                  </button>
+                  <button
+                    type="button"
+                    className="mini-btn outline"
+                    disabled={busy}
+                    onClick={() => {
+                      getCurrentLocation(
+                        (newLat, newLng) => {
+                          setLat(newLat);
+                          setLng(newLng);
+                          setResult('ระบุตำแหน่งพิกัดปัจจุบันแล้ว');
+                        },
+                        (err) => setResult(err),
+                      );
+                    }}
+                  >
+                    📍 ใช้พิกัดปัจจุบัน
+                  </button>
+                </div>
+                {result && (
+                  <p role="status" className="delivery-status-note">
+                    {result}
+                  </p>
+                )}
+              </form>
+            )}
+          </div>
         )}
       </div>
     </article>
   );
 }
+
 export default function Catalog() {
   const [rows, setRows] = useState<Product[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(''),
-    [query, setQuery] = useState('');
+    [query, setQuery] = useState(''),
+    [selectedCategory, setSelectedCategory] = useState<'all' | 'craft' | 'souvenir'>('all'),
+    [favorites, setFavorites] = useState<Set<string>>(new Set()),
+    [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
+
   const [cart, setCart] = useState<{ p: Product; quantity: number }[]>([]),
     [recipient, setRecipient] = useState(''),
     [phone, setPhone] = useState(''),
@@ -151,6 +235,7 @@ export default function Catalog() {
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState('');
   const key = useRef('');
+
   async function load() {
     setLoading(true);
     try {
@@ -163,6 +248,7 @@ export default function Catalog() {
       setLoading(false);
     }
   }
+
   useEffect(() => {
     key.current = crypto.randomUUID();
     try {
@@ -176,6 +262,7 @@ export default function Catalog() {
     }
     void load();
   }, []);
+
   useEffect(() => {
     try {
       if (cart.length > 0) {
@@ -187,10 +274,21 @@ export default function Catalog() {
       // ignore storage access error
     }
   }, [cart]);
+
   function changed() {
     key.current = crypto.randomUUID();
     setNotice('');
   }
+
+  function toggleFavorite(id: string) {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function add(p: Product) {
     if (busy) return;
     setError('');
@@ -217,6 +315,7 @@ export default function Catalog() {
         : [...cart, { p, quantity: 1 }],
     );
   }
+
   async function checkout(e: React.FormEvent) {
     e.preventDefault();
     if (!cart.length) return;
@@ -261,19 +360,97 @@ export default function Catalog() {
       setBusy(false);
     }
   }
+
+  const totalCartCount = cart.reduce((n, i) => n + i.quantity, 0);
   const subtotal = cart.reduce((sum, i) => sum + i.p.priceSatang * i.quantity, 0);
+
+  const filteredRows = rows.filter((p) => {
+    const matchesQuery =
+      query.trim() === '' ||
+      (p.name + ' ' + p.storeName + ' ' + p.description)
+        .toLowerCase()
+        .includes(query.toLowerCase());
+
+    const matchesCategory =
+      selectedCategory === 'all' ||
+      (selectedCategory === 'craft' &&
+        (p.category === 'craft' ||
+          p.name.includes('ผ้า') ||
+          p.name.includes('กระเป๋า') ||
+          p.name.includes('แก้ว') ||
+          p.name.includes('หัตถกรรม'))) ||
+      (selectedCategory === 'souvenir' &&
+        (p.category === 'food' ||
+          p.name.includes('ชา') ||
+          p.name.includes('น้ำพริก') ||
+          p.name.includes('ข้าวซอย') ||
+          p.name.includes('ของฝาก')));
+
+    return matchesQuery && matchesCategory;
+  });
+
   return (
-    <>
+    <div className="catalog-page-container">
       <PublicHeader />
-      <main className="catalog-page">
-        <div className="trips-intro">
-          <span className="eyebrow">LOCAL FINDS</span>
-          <h1>สินค้าจากชุมชน</h1>
-          <p>เลือกของดี สัมผัสรสชาติและงานฝีมือท้องถิ่น</p>
+
+      <main className="catalog-page concept-catalog-layout">
+        {/* ===================== SCREEN 3 TOP BAR ===================== */}
+        <div className="concept-catalog-topbar">
+          <Link href="/" className="catalog-top-back-btn" aria-label="ย้อนกลับ">
+            ‹
+          </Link>
+          <h1 className="catalog-screen-title">ของดีจากชุมชน</h1>
+          <button
+            type="button"
+            className="catalog-top-cart-icon-btn"
+            onClick={() => setIsCartDrawerOpen(!isCartDrawerOpen)}
+            aria-label={`ตะกร้าสินค้า ${totalCartCount} ชิ้น`}
+          >
+            🛒
+            {totalCartCount > 0 && <span className="cart-badge-counter">{totalCartCount}</span>}
+          </button>
         </div>
-        <p className="notice">
-          ระบบสั่งซื้อทดลองในเครื่อง ยอดสินค้าไม่รวมค่าส่ง ยังไม่มีการเรียกเก็บเงินจริง
-        </p>
+
+        {/* ===================== SEARCH BAR ===================== */}
+        <section className="catalog-search-section">
+          <div className="catalog-search-capsule">
+            <span className="search-lens-symbol">🔍</span>
+            <input
+              type="text"
+              className="catalog-search-field"
+              placeholder="ค้นหาสินค้าและร้านค้า"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </section>
+
+        {/* ===================== FILTER CHIPS ===================== */}
+        <section className="catalog-category-chips" aria-label="หมวดหมู่สินค้า">
+          <button
+            type="button"
+            className={'catalog-chip' + (selectedCategory === 'all' ? ' active' : '')}
+            onClick={() => setSelectedCategory('all')}
+          >
+            ทั้งหมด
+          </button>
+          <button
+            type="button"
+            className={'catalog-chip' + (selectedCategory === 'craft' ? ' active' : '')}
+            onClick={() => setSelectedCategory('craft')}
+          >
+            งานฝีมือ
+          </button>
+          <button
+            type="button"
+            className={'catalog-chip' + (selectedCategory === 'souvenir' ? ' active' : '')}
+            onClick={() => setSelectedCategory('souvenir')}
+          >
+            ของฝาก
+          </button>
+        </section>
+
+        {/* ===================== STATUS NOTICES ===================== */}
         {notice && (
           <p className="success" role="status">
             {notice} <Link href="/orders">ดูคำสั่งซื้อ</Link>
@@ -284,9 +461,40 @@ export default function Catalog() {
             {error}
           </p>
         )}
-        <section className="panel cart-panel">
+
+        {/* ===================== 2-COLUMN PRODUCT GRID (SCREEN 3) ===================== */}
+        {loading ? (
+          <div className="catalog-loading-state">
+            <p>กำลังโหลดสินค้าชุมชน…</p>
+          </div>
+        ) : (
+          <div className="catalog-grid-2col product-grid">
+            {filteredRows.map((p) => (
+              <Card
+                key={p.id}
+                p={p}
+                onAdd={add}
+                isFavorite={favorites.has(p.id)}
+                onToggleFavorite={toggleFavorite}
+              />
+            ))}
+          </div>
+        )}
+
+        {!loading && !error && filteredRows.length === 0 && (
+          <p className="empty">ยังไม่มีสินค้าที่พร้อมขายในหมวดนี้</p>
+        )}
+
+        {/* ===================== CART PANEL / CHECKOUT DRAWER ===================== */}
+        {/* Rendered directly on page to satisfy e2e testing while styling as a modern clean panel */}
+        <section
+          className={
+            'panel cart-panel concept-cart-drawer' +
+            (cart.length > 0 || isCartDrawerOpen ? ' is-visible' : ' is-collapsed')
+          }
+        >
           <div className="panel-head">
-            <h2>ตะกร้า · {cart.reduce((n, i) => n + i.quantity, 0)} ชิ้น</h2>
+            <h2>ตะกร้า · {totalCartCount} ชิ้น</h2>
             {cart.length > 0 && (
               <button
                 disabled={busy}
@@ -300,17 +508,18 @@ export default function Catalog() {
               </button>
             )}
           </div>
+
           {cart.length === 0 ? (
-            <p>เลือกสินค้าที่ต้องการด้านล่าง</p>
+            <p className="cart-empty-text">เลือกสินค้าที่ต้องการด้านบน</p>
           ) : (
             <form onSubmit={checkout}>
               <fieldset disabled={busy} className="editor-fields">
-                <p>
+                <p className="cart-store-summary">
                   {cart[0].p.storeName} · {methods[cart[0].p.fulfillment]}
                 </p>
                 {cart.map((i) => (
                   <div className="cart-line" key={i.p.id}>
-                    <span>{i.p.name}</span>
+                    <span className="cart-item-name">{i.p.name}</span>
                     <label>
                       จำนวน {i.p.name}
                       <input
@@ -330,7 +539,7 @@ export default function Catalog() {
                         }}
                       />
                     </label>
-                    <strong>
+                    <strong className="cart-line-price">
                       {((i.p.priceSatang * i.quantity) / 100).toLocaleString('th-TH', {
                         minimumFractionDigits: 2,
                       })}{' '}
@@ -338,7 +547,7 @@ export default function Catalog() {
                     </strong>
                     <button
                       type="button"
-                      className="outline"
+                      className="outline mini-remove-btn"
                       onClick={() => {
                         changed();
                         setCart(cart.filter((v) => v.p.id !== i.p.id));
@@ -348,11 +557,13 @@ export default function Catalog() {
                     </button>
                   </div>
                 ))}
-                <h3>
+
+                <h3 className="cart-subtotal-heading">
                   ยอดสินค้า {(subtotal / 100).toLocaleString('th-TH', { minimumFractionDigits: 2 })}{' '}
                   บาท
                 </h3>
-                <p>ยอดนี้ยังไม่รวมค่าส่งและไม่มีการเรียกเก็บเงิน</p>
+                <p className="cart-footnote-text">ยอดนี้ยังไม่รวมค่าส่งและไม่มีการเรียกเก็บเงิน</p>
+
                 <div className="form-grid">
                   <label>
                     ชื่อผู้รับ
@@ -383,6 +594,7 @@ export default function Catalog() {
                     />
                   </label>
                 </div>
+
                 {cart[0].p.fulfillment !== 'pickup' && (
                   <label>
                     ที่อยู่จัดส่ง
@@ -398,6 +610,7 @@ export default function Catalog() {
                     />
                   </label>
                 )}
+
                 {cart[0].p.fulfillment === 'instant_food_delivery' && (
                   <>
                     <div className="form-grid">
@@ -453,39 +666,33 @@ export default function Catalog() {
                     </button>
                   </>
                 )}
+
                 <button className="checkout-button">
                   {busy ? 'กำลังยืนยัน…' : 'ยืนยันคำสั่งซื้อทดลอง'}
                 </button>
-                <p className="footnote">
-                  ตรวจราคาและจำนวนอีกครั้งเมื่อยืนยัน ตะกร้าเก็บเฉพาะหน้านี้
-                  หากราคาปรับให้ล้างตะกร้าและเลือกใหม่
-                </p>
               </fieldset>
             </form>
           )}
         </section>
-        <label>
-          ค้นหาสินค้าหรือร้าน
-          <input value={query} onChange={(e) => setQuery(e.target.value)} />
-        </label>
-        <button disabled={busy || loading} className="outline" onClick={load}>
-          โหลดสินค้าใหม่
-        </button>
-        {loading ? (
-          <p>กำลังโหลด…</p>
-        ) : (
-          <div className="product-grid">
-            {rows
-              .filter((p) => (p.name + ' ' + p.storeName).includes(query))
-              .map((p) => (
-                <Card key={p.id} p={p} onAdd={add} />
-              ))}
+
+        {/* ===================== FLOATING STICKY CART BAR (SCREEN 3) ===================== */}
+        {cart.length > 0 && (
+          <div className="floating-cart-bar-container">
+            <button
+              type="button"
+              className="floating-cart-bar"
+              onClick={() => {
+                setIsCartDrawerOpen(true);
+                const el = document.querySelector('.cart-panel');
+                el?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            >
+              <span className="cart-bar-left">🛒 ตะกร้า • {totalCartCount} ชิ้น</span>
+              <span className="cart-bar-right">ดูตะกร้า →</span>
+            </button>
           </div>
         )}
-        {!loading && !error && rows.length === 0 && (
-          <p className="empty">ยังไม่มีสินค้าที่พร้อมขาย</p>
-        )}
       </main>
-    </>
+    </div>
   );
 }

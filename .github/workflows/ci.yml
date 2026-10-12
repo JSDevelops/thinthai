@@ -38,3 +38,32 @@ jobs:
 
       - name: Audit dependencies
         run: npm audit --omit=dev
+
+  integration:
+    name: Isolated API and database tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: thinthai
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: thinthai_test
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U thinthai -d thinthai_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://thinthai:ci-test-only@127.0.0.1:55433/thinthai_test
+      WEB_ORIGIN: http://127.0.0.1:3200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration

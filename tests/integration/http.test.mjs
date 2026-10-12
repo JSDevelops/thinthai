@@ -23,7 +23,13 @@ const users = {};
 const stores = [randomUUID(), randomUUID(), randomUUID()];
 async function start() {
   child = spawn(process.execPath, ['apps/api/dist/main.js'], {
-    env: { ...process.env, DATABASE_URL: url.href, API_PORT: '4201' },
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+      ENABLE_SANDBOX_PAYMENTS: 'true',
+      DATABASE_URL: url.href,
+      API_PORT: '4201',
+    },
     stdio: 'pipe',
   });
   await new Promise((resolve, reject) => {
@@ -1512,6 +1518,23 @@ test('payments, sandbox settlement, merchant ledger and hold expiration sweep', 
   const pGet = await get('payments/' + payment.id, tripBuyer);
   assert.equal(pGet.status, 200);
   assert.equal((await pGet.json()).status, 'pending');
+
+  // A signed-in staff account cannot inspect, create or settle another user's payment.
+  const unrelatedAdmin = await login(users.ADMIN.email);
+  assert.equal((await get('payments/' + payment.id, unrelatedAdmin)).status, 403);
+  assert.equal(
+    (await post('payments', { targetType: 'booking', targetId: booking.id }, unrelatedAdmin))
+      .status,
+    403,
+  );
+  assert.equal(
+    (await post('payments/' + payment.id + '/simulate', {}, unrelatedAdmin)).status,
+    403,
+  );
+  assert.equal(
+    (await db.query('SELECT status FROM payments WHERE id=$1', [payment.id])).rows[0].status,
+    'pending',
+  );
 
   // 4. Simulate payment success
   const simRes = await post('payments/' + payment.id + '/simulate', {}, tripBuyer);

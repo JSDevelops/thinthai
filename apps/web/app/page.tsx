@@ -1,17 +1,18 @@
 'use client';
-
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import PublicHeader from './public-header';
-import {
-  tripApi,
-  tripDate,
-  categories as categoryDict,
-  type Trip,
-  type Departure,
-} from './trip-shared';
+import { tripApi, tripDate, type Trip } from './trip-shared';
 
-interface CommunityItem {
+type Departure = {
+  id: string;
+  startsAt: string;
+  capacity: number;
+  remaining: number;
+  active: boolean;
+};
+
+type CommunityItem = {
   id: string;
   name: string;
   province: string;
@@ -26,129 +27,150 @@ interface CommunityItem {
   description?: string;
   departures: Departure[];
   isReal?: boolean;
-}
-
-interface CraftItem {
-  id: string;
-  title: string;
-  category: string;
-  price: number;
-  imageUrl: string;
-  artisan: string;
-}
+};
 
 const DEFAULT_COMMUNITIES: CommunityItem[] = [
   {
-    id: 'mae-kampong',
-    name: 'แม่กำปอง',
+    id: 'comm-1',
+    name: 'บ้านแม่กำปอง',
     province: 'เชียงใหม่',
     category: 'ธรรมชาติ',
     imageUrl:
-      'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1000&q=80',
-    tripPrice: 600,
-    priceSatang: 60000,
-    duration: '2 ชั่วโมง',
-    groupType: 'กลุ่มเล็ก',
-    workshopTitle: 'เรียนทอผ้ากับชุมชน',
-    meetingPoint: 'ศูนย์บริการนักท่องเที่ยวแม่กำปอง จ.เชียงใหม่',
-    departures: [],
-  },
-  {
-    id: 'koh-kret',
-    name: 'เกาะเกร็ด',
-    province: 'นนทบุรี',
-    category: 'วัฒนธรรม',
-    imageUrl:
-      'https://images.unsplash.com/photo-1528181304800-259b08848526?auto=format&fit=crop&w=1000&q=80',
-    tripPrice: 450,
-    priceSatang: 45000,
+      'https://images.unsplash.com/photo-1528181304800-259b08848526?auto=format&fit=crop&w=800&q=80',
+    tripPrice: 650,
+    priceSatang: 65000,
     duration: '3 ชั่วโมง',
-    groupType: 'กลุ่มครอบครัว',
-    workshopTitle: 'ปั้นดินเผาโบราณเกาะเกร็ด',
-    meetingPoint: 'ท่าเรือวัดสนามเหนือ เกาะเกร็ด จ.นนทบุรี',
-    departures: [],
+    groupType: 'กลุ่มเล็ก',
+    workshopTitle: 'สัมผัสวิถีชุมชน',
+    meetingPoint: 'ศาลากลางหมู่บ้านแม่กำปอง',
+    description: 'เรียนรู้วิถีชีวิตชาวบ้านริมลำธาร ชิมใบชาหมักเมี่ยงโบราณ และเดินสำรวจธรรมชาติ',
+    departures: [
+      {
+        id: 'dep-101',
+        startsAt: new Date(Date.now() + 86400000 * 2).toISOString(),
+        capacity: 8,
+        remaining: 6,
+        active: true,
+      },
+    ],
   },
   {
-    id: 'baan-rak-thai',
-    name: 'บ้านรักไทย',
-    province: 'แม่ฮ่องสอน',
+    id: 'comm-2',
+    name: 'บ้านป่าบงเปียง',
+    province: 'เชียงใหม่',
     category: 'ธรรมชาติ',
     imageUrl:
-      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1000&q=80',
-    tripPrice: 950,
-    priceSatang: 95000,
-    duration: '1 วันเต็ม',
+      'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80',
+    tripPrice: 850,
+    priceSatang: 85000,
+    duration: '4 ชั่วโมง',
     groupType: 'กลุ่มเล็ก',
-    workshopTitle: 'ล่องเรือชมสายหมอก & ชิมชายูนนาน',
-    meetingPoint: 'ริมทะเลสาบบ้านรักไทย จ.แม่ฮ่องสอน',
-    departures: [],
+    workshopTitle: 'ชมนาขั้นบันไดและสัมผัสวิถีปกาเกอะญอ',
+    meetingPoint: 'จุดชมวิวนาขั้นบันไดป่าบงเปียง',
+    description: 'สูดอากาศบริสุทธิ์ท่ามกลางนาข้าวขั้นบันไดที่สวยที่สุดในไทย และวิถีเกษตรชุมชน',
+    departures: [
+      {
+        id: 'dep-102',
+        startsAt: new Date(Date.now() + 86400000 * 3).toISOString(),
+        capacity: 6,
+        remaining: 4,
+        active: true,
+      },
+    ],
+  },
+  {
+    id: 'comm-3',
+    name: 'ชุมชนบ้านศิลาดาด',
+    province: 'สุโขทัย',
+    category: 'วัฒนธรรม',
+    imageUrl:
+      'https://images.unsplash.com/photo-1609137144820-2d08a54d5b24?auto=format&fit=crop&w=800&q=80',
+    tripPrice: 550,
+    priceSatang: 55000,
+    duration: '2.5 ชั่วโมง',
+    groupType: 'ครอบครัว',
+    workshopTitle: 'เวิร์กช็อปเครื่องปั้นสังคโลกโบราณ',
+    meetingPoint: 'เตาเผาโบราณบ้านศิลาดาด',
+    description: 'ปั้นดินเผาเขียนลายสังคโลกด้วยตนเอง พร้อมฟังเรื่องราวประวัติศาสตร์จากครูช่าง',
+    departures: [
+      {
+        id: 'dep-103',
+        startsAt: new Date(Date.now() + 86400000 * 4).toISOString(),
+        capacity: 10,
+        remaining: 8,
+        active: true,
+      },
+    ],
+  },
+  {
+    id: 'comm-4',
+    name: 'ชุมชนริมน้ำจันทบูร',
+    province: 'จันทบุรี',
+    category: 'อาหาร',
+    imageUrl:
+      'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&w=800&q=80',
+    tripPrice: 490,
+    priceSatang: 49000,
+    duration: '2 ชั่วโมง',
+    groupType: 'กลุ่มเล็ก',
+    workshopTitle: 'ชิมขนมโบราณและงานพลอยเมืองจันท์',
+    meetingPoint: 'สะพานวัดโรมันคาทอลิกจันทบุรี',
+    description: 'เดินลัดเลาะชุมชนเก่าร้อยปี ชิมก๋วยเตี๋ยวต้มยำกั้งและขนมโก๋โบราณ',
+    departures: [
+      {
+        id: 'dep-104',
+        startsAt: new Date(Date.now() + 86400000 * 5).toISOString(),
+        capacity: 12,
+        remaining: 10,
+        active: true,
+      },
+    ],
   },
 ];
 
-const CRAFT_ITEMS: CraftItem[] = [
-  {
-    id: 'craft-1',
-    title: 'กระเป๋าสานจากเส้นพลาสติก',
-    category: 'งานฝีมือชุมชน',
-    price: 350,
-    imageUrl:
-      'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?auto=format&fit=crop&w=600&q=80',
-    artisan: 'กลุ่มแม่บ้านริมคลอง',
-  },
-  {
-    id: 'craft-2',
-    title: 'เซรามิกงานดินเผา',
-    category: 'ของดีท้องถิ่น',
-    price: 250,
-    imageUrl:
-      'https://images.unsplash.com/photo-1610701596007-11502861dcfa?auto=format&fit=crop&w=600&q=80',
-    artisan: 'ช่างปั้นเกาะเกร็ด',
-  },
-  {
-    id: 'craft-3',
-    title: 'ผ้าทอมือลายพื้นเมือง',
-    category: 'งานฝีมือชุมชน',
-    price: 690,
-    imageUrl:
-      'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=600&q=80',
-    artisan: 'กลุ่มทอผ้าโบราณ',
-  },
-];
-
-const CATEGORIES = [
-  { id: 'all', label: 'ทั้งหมด', icon: '✨' },
-  { id: 'nature', label: 'ธรรมชาติ', icon: '🌿' },
-  { id: 'culture', label: 'วัฒนธรรม', icon: '🛕' },
-  { id: 'food', label: 'อาหาร', icon: '🍲' },
-  { id: 'craft', label: 'งานฝีมือ', icon: '🧵' },
+const SERVICES = [
+  { id: 'shopping', label: 'ช็อปปิ้ง', icon: '🛍️', href: '/catalog', bg: '#fef3e2' },
+  { id: 'food', label: 'สั่งอาหาร', icon: '🍲', href: '/catalog?cat=souvenir', bg: '#fde8e8' },
+  { id: 'stay', label: 'ที่พัก', icon: '🏡', href: '/trips?cat=nature', bg: '#e8f5e9' },
+  { id: 'ride', label: 'เรียกรถ', icon: '🚗', href: '#ride', bg: '#fffde7' },
+  { id: 'service', label: 'บริการ', icon: '🛠️', href: '#service', bg: '#e8f4fd' },
+  { id: 'community', label: 'ชุมชนวิถี', icon: '🌿', href: '/trips', bg: '#e0f2f1' },
 ];
 
 const categoryImages: Record<string, string> = {
   nature:
-    'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1000&q=80',
+    'https://images.unsplash.com/photo-1528181304800-259b08848526?auto=format&fit=crop&w=800&q=80',
   culture:
-    'https://images.unsplash.com/photo-1528181304800-259b08848526?auto=format&fit=crop&w=1000&q=80',
-  food: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1000&q=80',
+    'https://images.unsplash.com/photo-1609137144820-2d08a54d5b24?auto=format&fit=crop&w=800&q=80',
+  food: 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&w=800&q=80',
   craft:
-    'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1000&q=80',
+    'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80',
 };
 
-export default function Home() {
+const categoryDict: Record<string, string> = {
+  nature: 'ธรรมชาติ',
+  culture: 'วัฒนธรรม',
+  food: 'อาหาร',
+  craft: 'งานฝีมือ',
+};
+
+export default function Page() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [communities, setCommunities] = useState<CommunityItem[]>(DEFAULT_COMMUNITIES);
+  const [wishlist, setWishlist] = useState<Set<string>>(new Set(['comm-1']));
 
-  // Booking Drawer State
+  // Slide-over Drawer State (Screen 2)
   const [activeBooking, setActiveBooking] = useState<CommunityItem | null>(null);
   const [selectedDepartureId, setSelectedDepartureId] = useState('');
-  const [guestCount, setGuestCount] = useState(1);
+  const [guestCount, setGuestCount] = useState(2);
   const [contactName, setContactName] = useState('');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmedBookingId, setConfirmedBookingId] = useState('');
-  const [isBookmarked, setIsBookmarked] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [activeServiceModal, setActiveServiceModal] = useState<'ride' | 'service' | null>(null);
   const nonce = useRef('');
 
   const loadRealTrips = useCallback(async () => {
@@ -164,23 +186,36 @@ export default function Home() {
           tripPrice: Math.round(t.priceSatang / 100),
           priceSatang: t.priceSatang,
           duration: `${t.durationHours} ชั่วโมง`,
-          groupType: 'ชุมชนท้องถิ่น',
+          groupType: 'กลุ่มเล็ก',
           workshopTitle: t.title,
           meetingPoint: t.meetingPoint,
           description: t.description,
           departures: t.departures || [],
           isReal: true,
         }));
-        setCommunities(mapped);
+        setCommunities((prev) => {
+          const ids = new Set(DEFAULT_COMMUNITIES.map((m) => m.id));
+          return [...DEFAULT_COMMUNITIES, ...mapped.filter((p) => !ids.has(p.id))];
+        });
       }
     } catch {
-      // Fallback to default community items if API offline or during initial build
+      // Graceful fallback to default mock communities
     }
   }, []);
 
   useEffect(() => {
     void loadRealTrips();
   }, [loadRealTrips]);
+
+  const toggleWishlist = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setWishlist((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const filteredCommunities = communities.filter((item) => {
     const matchCategory =
@@ -202,7 +237,7 @@ export default function Home() {
     setActiveBooking(item);
     const validDep = item.departures.find((d) => d.remaining > 0);
     setSelectedDepartureId(validDep ? validDep.id : item.departures[0]?.id || '');
-    setGuestCount(1);
+    setGuestCount(2);
     setError('');
     setBookingConfirmed(false);
     setConfirmedBookingId('');
@@ -264,215 +299,124 @@ export default function Home() {
   };
 
   return (
-    <div className="public-site">
+    <div className="public-site concept-theme">
       <PublicHeader />
 
-      <main className="home-main flex-home-layout">
-        {/* ===================== HERO SECTION ===================== */}
-        <section className="flex-hero" aria-label="แนะนำการท่องเที่ยวชุมชน">
-          {/* Left Column: Typography, Search Box, Category Pills */}
-          <div className="hero-left-content">
-            <div className="hero-badge">เที่ยวไทยให้ถึงถิ่น · LOCAL ROOTS</div>
-            <h1 className="hero-main-title">
-              เที่ยวใกล้ชิด
-              <br />
-              <span>วิถีชุมชน</span>
-            </h1>
-            <p className="hero-subtitle">
-              พบที่เที่ยว กิจกรรม และของดีจากคนในพื้นที่ที่รอให้คุณไปสัมผัส
-            </p>
+      <main className="home-main concept-home-layout">
+        {/* ===================== GREETING & SEARCH (Screen 1) ===================== */}
+        <section className="concept-search-section">
+          <h1 className="concept-greeting-title">วันนี้ อยากไปไหน?</h1>
 
-            {/* Flex Search Capsule */}
-            <form
-              className="flex-search-capsule"
-              onSubmit={(e) => {
-                e.preventDefault();
-              }}
-            >
-              <span className="search-icon" aria-hidden="true">
-                🔍
-              </span>
-              <input
-                className="search-input-field"
-                type="text"
-                placeholder="อยากไปที่ไหน? (เช่น แม่กำปอง, เชียงใหม่)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button className="search-btn-pill" type="submit">
-                ค้นหา
-              </button>
-            </form>
-
-            {/* Category Pills (Flex container) */}
-            <div className="category-pills-row" role="tablist">
-              {CATEGORIES.map((cat) => {
-                const isActive = selectedCategory === cat.id;
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    className={'cat-pill-btn' + (isActive ? ' active' : '')}
-                    onClick={() => setSelectedCategory(cat.id)}
-                    role="tab"
-                    aria-selected={isActive}
-                  >
-                    <span className="cat-icon">{cat.icon}</span>
-                    <span>{cat.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Right Column: Hero Visual with soft blend */}
-          <div className="hero-right-visual">
-            <div className="hero-img-frame">
-              <img
-                src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80"
-                alt="หมู่บ้านท่ามกลางธรรมชาติสายหมอก"
-                className="hero-main-photo"
-              />
-              <div className="hero-photo-gradient" />
-              <div className="hero-floating-badge">
-                <span className="pulse-dot" />
-                <span>เปิดรับนักเดินทางวันนี้ · 12 ชุมชน</span>
-              </div>
-            </div>
-          </div>
+          {/* Search Capsule Input */}
+          <form
+            className="concept-search-bar"
+            onSubmit={(e) => {
+              e.preventDefault();
+            }}
+          >
+            <span className="search-lens-icon">🔍</span>
+            <input
+              type="text"
+              className="concept-search-input"
+              placeholder="ค้นหาช็อปปิ้ง สั่งอาหาร ที่พัก ชุมชนวิถี"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </form>
         </section>
 
-        {/* ===================== MOBILE QUICK CATEGORIES (Mockup 2) ===================== */}
-        <section className="mobile-quick-categories">
-          <div className="mobile-greeting-block">
-            <h2>วันนี้ไปไหนดี?</h2>
-            <p>พบที่เที่ยว กิจกรรม และของดีจากคนในพื้นที่</p>
-          </div>
-          <div className="quick-cat-grid">
-            <Link href="/trips" className="quick-cat-card">
-              <span className="quick-icon">⛰️</span>
-              <span className="quick-label">ทริปชุมชน</span>
-            </Link>
-            <Link href="/trips?cat=culture" className="quick-cat-card">
-              <span className="quick-icon">👥</span>
-              <span className="quick-label">วิถีชุมชน</span>
-            </Link>
-            <Link href="/trips?cat=food" className="quick-cat-card">
-              <span className="quick-icon">🍲</span>
-              <span className="quick-label">อาหารพื้นถิ่น</span>
-            </Link>
-            <Link href="/catalog" className="quick-cat-card">
-              <span className="quick-icon">🛍️</span>
-              <span className="quick-label">ของดีชุมชน</span>
-            </Link>
-          </div>
-        </section>
-
-        {/* ===================== SECTION 1: ชุมชนน่าเที่ยว ===================== */}
-        <section className="flex-content-section" aria-label="ชุมชนน่าเที่ยว">
-          <div className="section-flex-header">
-            <div>
-              <h2 className="section-title-text">ชุมชนน่าเที่ยว</h2>
-              <span className="section-sub-text">
-                สัมผัสเสน่ห์วิถีชีวิตดั้งเดิมที่ดูแลโดยชุมชนแท้ 100%
-              </span>
-            </div>
-            <Link className="see-all-arrow-link" href="/trips">
-              <span>ดูทั้งหมด</span>
-              <span className="arrow-icon">→</span>
-            </Link>
-          </div>
-
-          <div className="community-cards-flex-grid">
-            {filteredCommunities.map((item) => (
-              <div
-                key={item.id}
-                className="community-destination-card"
-                onClick={() => handleOpenBooking(item)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') handleOpenBooking(item);
-                }}
+        {/* ===================== 6 CORE SERVICES GRID ===================== */}
+        <section className="concept-services-grid" aria-label="หมวดหมู่บริการหลัก">
+          {SERVICES.map((srv) => {
+            const isModal = srv.id === 'ride' || srv.id === 'service';
+            return isModal ? (
+              <button
+                key={srv.id}
+                type="button"
+                className="concept-service-item service-modal-trigger"
+                onClick={() => setActiveServiceModal(srv.id as 'ride' | 'service')}
               >
-                <img
-                  src={item.imageUrl}
-                  alt={item.name}
-                  className="comm-card-photo"
-                  loading="lazy"
-                />
-                <div className="comm-card-dark-gradient" />
-                <div className="comm-card-tag-pill">ชุมชนแนะนำ</div>
-                <div className="comm-card-text-content">
-                  <h3 className="comm-card-title">{item.name}</h3>
-                  <div className="comm-card-meta">
-                    <span className="comm-pin-icon">📍</span>
-                    <span>{item.province}</span>
-                    <span className="comm-separator">·</span>
-                    <span className="comm-price-hint">฿{item.tripPrice}/คน</span>
+                <div className="service-icon-box" style={{ backgroundColor: srv.bg }}>
+                  <span className="service-emoji">{srv.icon}</span>
+                </div>
+                <span className="service-label-text">{srv.label}</span>
+              </button>
+            ) : (
+              <Link key={srv.id} href={srv.href} className="concept-service-item">
+                <div className="service-icon-box" style={{ backgroundColor: srv.bg }}>
+                  <span className="service-emoji">{srv.icon}</span>
+                </div>
+                <span className="service-label-text">{srv.label}</span>
+              </Link>
+            );
+          })}
+        </section>
+
+        {/* ===================== FEATURED BANNER ("เที่ยวใกล้ชุมชน") ===================== */}
+        <section className="concept-featured-banner">
+          <div className="banner-visual-frame">
+            <img
+              src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80"
+              alt="เที่ยวใกล้ชุมชน สัมผัสเสน่ห์วิถีถิ่นไทย"
+              className="banner-cover-photo"
+            />
+            <div className="banner-gradient-mask" />
+            <div className="banner-content-box">
+              <h2 className="banner-heading">เที่ยวใกล้ชุมชน</h2>
+              <p className="banner-subheading">สัมผัสเสน่ห์วิถีถิ่นไทย</p>
+              <Link href="/trips" className="banner-yellow-cta-btn">
+                สำรวจชุมชนวิถี →
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ===================== "ชุมชนน่าไป" DESTINATIONS ===================== */}
+        <section className="concept-destinations-section">
+          <div className="section-head-row">
+            <h2 className="section-main-heading">ชุมชนน่าไป</h2>
+            <Link href="/trips" className="see-all-link">
+              ดูทั้งหมด →
+            </Link>
+          </div>
+
+          <div className="destinations-horizontal-scroll">
+            {filteredCommunities.map((item) => {
+              const isFav = wishlist.has(item.id);
+              return (
+                <div
+                  key={item.id}
+                  className="destination-card"
+                  onClick={() => handleOpenBooking(item)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') handleOpenBooking(item);
+                  }}
+                >
+                  <div className="card-photo-wrap">
+                    <img src={item.imageUrl} alt={item.name} className="destination-photo" />
+                    <button
+                      type="button"
+                      className={'card-heart-btn' + (isFav ? ' active' : '')}
+                      onClick={(e) => toggleWishlist(item.id, e)}
+                      aria-label="บันทึกรายการโปรด"
+                    >
+                      {isFav ? '❤️' : '🤍'}
+                    </button>
+                  </div>
+                  <div className="card-info-wrap">
+                    <h3 className="destination-title">{item.name}</h3>
+                    <p className="destination-location">{item.province}</p>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
-
-        {/* ===================== SECTION 2: ของดีชุมชน ===================== */}
-        <section className="flex-content-section" aria-label="ของดีชุมชน">
-          <div className="section-flex-header">
-            <div>
-              <h2 className="section-title-text">ของดีชุมชน</h2>
-              <span className="section-sub-text">
-                สินค้า OTOP งานหัตถศิลป์ และอาหารพื้นบ้าน รายได้ส่งตรงถึงมือช่างฝีมือ
-              </span>
-            </div>
-            <Link className="see-all-arrow-link" href="/catalog">
-              <span>ดูทั้งหมด</span>
-              <span className="arrow-icon">→</span>
-            </Link>
-          </div>
-
-          <div className="craft-products-flex-grid">
-            {CRAFT_ITEMS.map((craft) => (
-              <Link key={craft.id} href={`/catalog`} className="craft-item-horizontal-card">
-                <img
-                  src={craft.imageUrl}
-                  alt={craft.title}
-                  className="craft-thumb-img"
-                  loading="lazy"
-                />
-                <div className="craft-info-col">
-                  <span className="craft-category-badge">{craft.category}</span>
-                  <h3 className="craft-title-text">{craft.title}</h3>
-                  <span className="craft-artisan-name">โดย {craft.artisan}</span>
-                  <div className="craft-price-tag">฿{craft.price}</div>
-                </div>
-                <div className="craft-arrow-circle" aria-hidden="true">
-                  ›
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        {/* ===================== BANNER ===================== */}
-        <section className="flex-community-banner">
-          <div className="banner-icon-box">🌿</div>
-          <div className="banner-text-group">
-            <h3>ทุกการเดินทาง มีชุมชนอยู่เบื้องหลัง</h3>
-            <p>ร่วมกระจายรายได้สู่คนท้องถิ่น อนุรักษ์ภูมิปัญญา และสัมผัสไทยให้ถึงถิ่น</p>
-          </div>
-          <Link href="/trips" className="banner-cta-btn">
-            ออกไปค้นพบ →
-          </Link>
-        </section>
-
-        <p className="footnote-text">
-          ThinThai (เที่ยวไทยให้ถึงถิ่น) — แพลตฟอร์มท่องเที่ยวชุมชนเชิงสร้างสรรค์
-        </p>
       </main>
 
-      {/* ===================== SLIDE-OVER BOOKING DRAWER (Mockup 3) ===================== */}
+      {/* ===================== SLIDE-OVER DETAIL & BOOKING SHEET (Screen 2) ===================== */}
       {activeBooking && (
         <div
           className="booking-drawer-backdrop"
@@ -480,163 +424,143 @@ export default function Home() {
           role="dialog"
           aria-modal="true"
         >
-          <div className="booking-drawer-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="concept-detail-sheet" onClick={(e) => e.stopPropagation()}>
             {/* Top Navigation */}
-            <div className="drawer-top-bar">
-              <button type="button" className="drawer-back-btn" onClick={handleCloseBooking}>
-                ‹ กลับ
+            <div className="sheet-top-controls">
+              <button
+                type="button"
+                className="circle-control-btn back-btn"
+                onClick={handleCloseBooking}
+                aria-label="ย้อนกลับ"
+              >
+                ‹
               </button>
               <button
                 type="button"
-                className={'drawer-bookmark-btn' + (isBookmarked ? ' active' : '')}
-                onClick={() => setIsBookmarked(!isBookmarked)}
+                className="circle-control-btn heart-btn"
+                onClick={() => toggleWishlist(activeBooking.id)}
+                aria-label="บันทึกรายการโปรด"
               >
-                {isBookmarked ? '❤️ บันทึกแล้ว' : '🤍 บันทึก'}
+                {wishlist.has(activeBooking.id) ? '❤️' : '🤍'}
               </button>
             </div>
 
-            {/* Workshop Hero Photo */}
-            <div className="drawer-photo-wrap">
+            {/* Parallax Hero Photo */}
+            <div className="sheet-hero-image-wrap">
               <img
                 src={activeBooking.imageUrl}
                 alt={activeBooking.workshopTitle}
-                className="drawer-workshop-img"
+                className="sheet-hero-photo"
               />
-              <div className="drawer-photo-overlay" />
             </div>
 
-            {/* Workshop Title & Location */}
-            <div className="drawer-body-content">
-              <div className="drawer-notice-bar">
-                การจองรุ่นทดลอง · กันที่นั่งเมื่อส่งคำขอ รอผู้ประกอบการยืนยัน ·
-                ยังไม่รับชำระเงินจริง
+            {/* Sheet White Card Body */}
+            <div className="sheet-card-body">
+              <h2 className="sheet-title">{activeBooking.workshopTitle}</h2>
+              <div className="sheet-location-row">
+                <span className="pin-icon">📍</span>
+                <span>{activeBooking.province}</span>
               </div>
 
-              <h2 className="drawer-workshop-title">{activeBooking.workshopTitle}</h2>
-              <div className="drawer-location-row">
-                <span className="drawer-pin">📍</span>
-                <span>
-                  {activeBooking.name}, {activeBooking.province}
-                </span>
+              {/* 3 Pills: Duration, Group, Tag */}
+              <div className="sheet-pills-row">
+                <div className="sheet-pill">⏱ 3 ชั่วโมง</div>
+                <div className="sheet-pill">👥 กลุ่มเล็ก</div>
+                <div className="sheet-pill green-pill">🍃 กิจกรรมชุมชน</div>
               </div>
 
-              {activeBooking.meetingPoint && (
-                <div className="drawer-location-row">
-                  <span className="drawer-pin">🚩</span>
-                  <span style={{ fontSize: '13px' }}>จุดนัดพบ: {activeBooking.meetingPoint}</span>
-                </div>
-              )}
-
-              {activeBooking.description && (
-                <p style={{ fontSize: '13px', color: '#556a62', margin: '0', lineHeight: 1.5 }}>
-                  {activeBooking.description}
-                </p>
-              )}
-
-              {/* Badges */}
-              <div className="drawer-badges-row">
-                <div className="drawer-badge-pill">
-                  <span>⏱</span>
-                  <span>{activeBooking.duration}</span>
-                </div>
-                <div className="drawer-badge-pill">
-                  <span>👥</span>
-                  <span>{activeBooking.groupType}</span>
-                </div>
-              </div>
-
-              {/* Departure Selection */}
-              <div className="drawer-form-section">
-                <label className="drawer-section-label">รอบเดินทาง</label>
-                {activeBooking.departures.length > 0 ? (
-                  <div className="drawer-departure-list">
-                    {activeBooking.departures.map((d) => {
-                      const isSelected = selectedDepartureId === d.id;
-                      const isFull = d.remaining <= 0;
-                      return (
-                        <button
-                          key={d.id}
-                          type="button"
-                          disabled={isFull || bookingConfirmed}
-                          className={'drawer-departure-btn' + (isSelected ? ' active' : '')}
-                          onClick={() => {
-                            setSelectedDepartureId(d.id);
-                            setError('');
-                          }}
-                        >
-                          <span>📅 {tripDate(d.startsAt)}</span>
-                          <span className="drawer-remaining-tag">
-                            {isFull ? 'เต็มแล้ว' : `ว่าง ${d.remaining} ที่`}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="drawer-location-row" style={{ color: '#d37827' }}>
-                    <span>
-                      ⚠️ ยังไม่มีรอบเปิดรับจองสำหรับรายการนี้ ตรวจสอบรอบทั้งหมดได้ที่{' '}
-                      <Link href="/trips" style={{ textDecoration: 'underline' }}>
-                        หน้าค้นหาทริป
-                      </Link>
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Guest Counter */}
-              <div className="drawer-form-section">
-                <div className="guest-counter-row">
-                  <div>
-                    <label className="drawer-section-label">จำนวนผู้เข้าร่วม</label>
-                    <div className="guest-counter-sub">
-                      ฿{activeBooking.tripPrice.toLocaleString('th-TH')} / คน
+              {/* Section: สิ่งที่จะได้สัมผัส (3 Circular Icons) */}
+              <div className="sheet-highlights-section">
+                <h3 className="sheet-section-title">สิ่งที่จะได้สัมผัส</h3>
+                <div className="highlights-icons-row">
+                  <div className="highlight-item">
+                    <div className="highlight-icon-circle">🚶‍♂️</div>
+                    <div className="highlight-text-wrap">
+                      <strong>เดินชมชุมชน</strong>
+                      <span>สัมผัสวิถีชีวิตของคนในท้องถิ่น</span>
                     </div>
                   </div>
-                  <div className="counter-controls">
-                    <button
-                      type="button"
-                      className="counter-btn"
-                      onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
-                      disabled={guestCount <= 1 || bookingConfirmed}
-                    >
-                      −
-                    </button>
-                    <span className="counter-value">{guestCount}</span>
-                    <button
-                      type="button"
-                      className="counter-btn"
-                      onClick={() => {
-                        const maxSeats = Math.min(
-                          10,
-                          activeBooking.departures.find((d) => d.id === selectedDepartureId)
-                            ?.remaining || 10,
-                        );
-                        setGuestCount((prev) => Math.min(maxSeats, prev + 1));
-                      }}
-                      disabled={
-                        bookingConfirmed ||
-                        guestCount >=
-                          Math.min(
-                            10,
-                            activeBooking.departures.find((d) => d.id === selectedDepartureId)
-                              ?.remaining || 10,
-                          )
-                      }
-                    >
-                      +
-                    </button>
+
+                  <div className="highlight-item">
+                    <div className="highlight-icon-circle">🧶</div>
+                    <div className="highlight-text-wrap">
+                      <strong>เรียนรู้งานฝีมือ</strong>
+                      <span>ลองทำงานหัตถกรรมกับชาวบ้าน</span>
+                    </div>
+                  </div>
+
+                  <div className="highlight-item">
+                    <div className="highlight-icon-circle">🍲</div>
+                    <div className="highlight-text-wrap">
+                      <strong>ชิมอาหารพื้นบ้าน</strong>
+                      <span>ลิ้มรสเมนูท้องถิ่นจากวัตถุดิบสดใหม่</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Contact Information Form */}
-              <div className="drawer-form-section">
-                <label className="drawer-section-label">ข้อมูลผู้ติดต่อ</label>
+              {/* Section: เลือกรอบเดินทาง (3 Column Selectors) */}
+              <div className="sheet-departure-section">
+                <h3 className="sheet-section-title">เลือกรอบเดินทาง</h3>
+                <div className="departure-selectors-grid">
+                  {/* Selector 1: Date */}
+                  <div className="selector-box">
+                    <span className="selector-label">📅 วันที่เดินทาง</span>
+                    <select
+                      className="selector-select"
+                      value={selectedDepartureId}
+                      onChange={(e) => setSelectedDepartureId(e.target.value)}
+                      disabled={bookingConfirmed}
+                    >
+                      {activeBooking.departures.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {tripDate(d.startsAt)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Selector 2: Time */}
+                  <div className="selector-box">
+                    <span className="selector-label">🕒 เวลา</span>
+                    <div className="selector-value">09:00 ▾</div>
+                  </div>
+
+                  {/* Selector 3: Participants Stepper */}
+                  <div className="selector-box">
+                    <span className="selector-label">👥 จำนวนคน</span>
+                    <div className="stepper-controls">
+                      <button
+                        type="button"
+                        className="stepper-btn"
+                        onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                        disabled={guestCount <= 1 || bookingConfirmed}
+                      >
+                        −
+                      </button>
+                      <span className="stepper-value">{guestCount}</span>
+                      <button
+                        type="button"
+                        className="stepper-btn"
+                        onClick={() => setGuestCount(guestCount + 1)}
+                        disabled={guestCount >= 10 || bookingConfirmed}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact Information */}
+              <div className="sheet-contact-section">
+                <label className="sheet-section-title" style={{ display: 'block' }}>
+                  ข้อมูลผู้ติดต่อ
+                </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <input
                     type="text"
-                    className="drawer-input-field"
+                    className="sheet-input-field"
                     placeholder="ชื่อ-นามสกุล ผู้ติดต่อ *"
                     value={contactName}
                     onChange={(e) => setContactName(e.target.value)}
@@ -644,8 +568,8 @@ export default function Home() {
                   />
                   <input
                     type="tel"
-                    className="drawer-input-field"
-                    placeholder="เบอร์โทรศัพท์ติดต่อ (เช่น 0812345678) *"
+                    className="sheet-input-field"
+                    placeholder="เบอร์โทรศัพท์ (เช่น 0812345678) *"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     disabled={bookingConfirmed || busy}
@@ -653,45 +577,23 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Policy row */}
-              <div className="drawer-policy-row">
-                <span className="policy-icon">📋</span>
-                <span className="policy-text">เงื่อนไขการจองและนโยบายชุมชน</span>
-                <span className="policy-arrow">›</span>
-              </div>
-
-              {/* Error Alert */}
+              {/* Error Message */}
               {error && (
-                <div className="drawer-error-box" role="alert">
+                <div className="sheet-error-box" role="alert">
                   ⚠️ {error}
-                  {error.includes('เข้าสู่ระบบ') && (
-                    <Link href="/workspace">ไปหน้าเข้าสู่ระบบ →</Link>
-                  )}
                 </div>
               )}
 
-              {/* Success Box */}
+              {/* Booking Success Card with PromptPay CTA */}
               {bookingConfirmed && (
-                <div className="booking-success-box" role="status">
+                <div className="sheet-success-box" role="status">
                   🎉 บันทึกคำขอจองสำเร็จแล้ว! (รหัส: {confirmedBookingId.slice(0, 8)})
                   <br />
                   <small style={{ color: '#2e7d32' }}>
                     จำนวน {guestCount} ท่าน · ระบบกันที่นั่งให้แล้ว 30 นาที
                   </small>
                   <div style={{ marginTop: '10px' }}>
-                    <Link
-                      href="/bookings"
-                      style={{
-                        display: 'inline-block',
-                        background: '#00695c',
-                        color: '#fff',
-                        padding: '8px 16px',
-                        borderRadius: '8px',
-                        textDecoration: 'none',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                      }}
-                    >
+                    <Link href="/bookings" className="sheet-pay-cta-btn">
                       💳 ดำเนินการชำระเงิน (PromptPay) →
                     </Link>
                   </div>
@@ -700,30 +602,26 @@ export default function Home() {
             </div>
 
             {/* Sticky Bottom Bar */}
-            <div className="drawer-sticky-bottom">
-              <div className="drawer-price-col">
-                <div className="drawer-price-number">
+            <div className="sheet-sticky-footer">
+              <div className="sheet-price-col">
+                <div className="sheet-price-num">
                   ฿{(activeBooking.tripPrice * guestCount).toLocaleString('th-TH')}
-                  <small> / {guestCount} คน</small>
                 </div>
-                <div className="drawer-price-note">รวมอุปกรณ์และกิจกรรมชุมชน</div>
+                <div className="sheet-price-unit">รวม {guestCount} คน</div>
               </div>
+
               {bookingConfirmed ? (
-                <Link
-                  href="/bookings"
-                  className="drawer-checkout-btn"
-                  style={{ textAlign: 'center', textDecoration: 'none' }}
-                >
+                <Link href="/bookings" className="sheet-primary-cta-btn">
                   ดูทริปของฉัน
                 </Link>
               ) : (
                 <button
                   type="button"
-                  className="drawer-checkout-btn"
-                  disabled={busy || (activeBooking.departures.length > 0 && !selectedDepartureId)}
+                  className="sheet-primary-cta-btn"
+                  disabled={busy}
                   onClick={handleConfirmBooking}
                 >
-                  {busy ? 'กำลังบันทึก...' : 'ส่งคำขอจอง'}
+                  {busy ? 'กำลังบันทึก…' : 'ตรวจสอบการจอง →'}
                 </button>
               )}
             </div>
@@ -731,12 +629,154 @@ export default function Home() {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="public-footer flex-footer">
-        <strong>ThinThai</strong>
-        <span>เที่ยวไทยให้ถึงถิ่น · โครงการเพื่อการท่องเที่ยวชุมชนยั่งยืน</span>
-        <Link href="/workspace">สำหรับผู้ประกอบการ / เข้าสู่ระบบ</Link>
-      </footer>
+      {/* ===================== RIDE MODAL (เรียกรถ) ===================== */}
+      {activeServiceModal === 'ride' && (
+        <div
+          className="booking-drawer-backdrop"
+          onClick={() => setActiveServiceModal(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="concept-detail-sheet service-modal-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header-row">
+              <h2 className="modal-title">🚗 เรียกรถชุมชน</h2>
+              <button
+                type="button"
+                className="circle-control-btn close-modal-btn"
+                onClick={() => setActiveServiceModal(null)}
+                aria-label="ปิด"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-body-scroll">
+              <p className="modal-desc">
+                บริการเดินทางและรถรับ-ส่งท้องถิ่นโดยคนขับในชุมชน ราคากลางเป็นธรรม ปลอดภัย ได้มาตรฐาน
+              </p>
+
+              <div className="service-options-list">
+                <div className="service-option-card">
+                  <div className="service-option-icon">🛺</div>
+                  <div className="service-option-info">
+                    <strong>รถสองแถวท้องถิ่น (สองแถวแดง / สองแถวชุมชน)</strong>
+                    <span>รับ-ส่งตามจุดท่องเที่ยวและเส้นทางในหมู่บ้าน</span>
+                    <span className="service-option-price">เริ่มต้น 40 - 80 บาท / คน</span>
+                  </div>
+                </div>
+
+                <div className="service-option-card">
+                  <div className="service-option-icon">🚐</div>
+                  <div className="service-option-info">
+                    <strong>รถตู้ / รถนำเที่ยวกลุ่ม</strong>
+                    <span>เดินทางเป็นกลุ่มส่วนตัว สะดวกสบาย พร้อมคนขับชำนาญทาง</span>
+                    <span className="service-option-price">เริ่มต้น 1,500 บาท / วัน</span>
+                  </div>
+                </div>
+
+                <div className="service-option-card">
+                  <div className="service-option-icon">🛻</div>
+                  <div className="service-option-info">
+                    <strong>รถกระบะขึ้นดอย / ชมวิวธรรมชาติ</strong>
+                    <span>สำหรับเส้นทางลาดชันและจุดชมวิวยอดดอย</span>
+                    <span className="service-option-price">เริ่มต้น 500 บาท / เที่ยว</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="service-contact-box">
+                <span className="contact-label">ศูนย์ประสานงานรถบริการชุมชน:</span>
+                <a href="tel:053123456" className="service-phone-link">
+                  📞 053-123-456
+                </a>
+                <p className="service-note-text">
+                  * สามารถแจ้งจุดรับและจุดส่งแก่ผู้ประสานงาน หรือสอบถามที่พักของคุณได้ตลอด 24 ชม.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== SERVICES MODAL (บริการ) ===================== */}
+      {activeServiceModal === 'service' && (
+        <div
+          className="booking-drawer-backdrop"
+          onClick={() => setActiveServiceModal(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="concept-detail-sheet service-modal-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header-row">
+              <h2 className="modal-title">🛠️ บริการในชุมชน</h2>
+              <button
+                type="button"
+                className="circle-control-btn close-modal-btn"
+                onClick={() => setActiveServiceModal(null)}
+                aria-label="ปิด"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-body-scroll">
+              <p className="modal-desc">
+                บริการและสิ่งอำนวยความสะดวกจากภูมิปัญญาท้องถิ่น
+                เพื่อให้คุณสัมผัสวิถีไทยได้อย่างลึกซึ้ง
+              </p>
+
+              <div className="service-options-list">
+                <div className="service-option-card">
+                  <div className="service-option-icon">🧭</div>
+                  <div className="service-option-info">
+                    <strong>ไกด์ท้องถิ่น / ผู้นำทางชุมชน</strong>
+                    <span>ฟังเรื่องเล่าประวัติศาสตร์และวิถีชาวบ้านจากครูช่างและปราชญ์ท้องถิ่น</span>
+                    <span className="service-option-price">300 - 500 บาท / ทริป</span>
+                  </div>
+                </div>
+
+                <div className="service-option-card">
+                  <div className="service-option-icon">👘</div>
+                  <div className="service-option-info">
+                    <strong>เช่าชุดพื้นเมือง / ล้านนาถ่ายภาพ</strong>
+                    <span>ชุดผ้าทอมือและเครื่องประดับเงินแท้ ถ่ายภาพมุมสวยในชุมชน</span>
+                    <span className="service-option-price">150 - 250 บาท / วัน</span>
+                  </div>
+                </div>
+
+                <div className="service-option-card">
+                  <div className="service-option-icon">💆</div>
+                  <div className="service-option-info">
+                    <strong>นวดแผนไทย & ประคบสมุนไพรสด</strong>
+                    <span>ผ่อนคลายด้วยสมุนไพรพื้นบ้านปลูกเองในชุมชน</span>
+                    <span className="service-option-price">250 บาท / ชั่วโมง</span>
+                  </div>
+                </div>
+
+                <div className="service-option-card">
+                  <div className="service-option-icon">🚴</div>
+                  <div className="service-option-info">
+                    <strong>เช่าจักรยาน / มอเตอร์ไซค์เที่ยวชุมชน</strong>
+                    <span>ปั่นชมสวน เลียบลำธาร และแวะร้านค้าท้องถิ่น</span>
+                    <span className="service-option-price">เริ่มต้น 80 บาท / วัน</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="service-contact-box">
+                <span className="contact-label">สอบถามหรือจองบริการล่วงหน้า:</span>
+                <a href="tel:053123456" className="service-phone-link">
+                  📞 053-123-456 (ศูนย์ข้อมูลชุมชน)
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

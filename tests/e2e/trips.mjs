@@ -82,13 +82,14 @@ try {
   ]) {
     await buyer.setViewportSize({ width, height });
     await buyer.goto(base);
-    await buyer.getByRole('link', { name: 'ค้นหาทริป →', exact: true }).waitFor();
+    const tripsLink = buyer.locator('a[href="/trips"]:visible').first();
+    await tripsLink.waitFor();
     assert.equal(
       await buyer.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
     );
     await buyer.screenshot({ path: `design/previews/trips/${device}-home.png`, fullPage: true });
-    await buyer.getByRole('link', { name: 'ค้นหาทริป →', exact: true }).click();
+    await tripsLink.click();
     await buyer.getByRole('heading', { name: title, exact: true }).waitFor();
     assert.equal(
       await buyer.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

@@ -30,8 +30,8 @@ type PaymentIntent = {
 };
 
 const labels: Record<string, string> = {
-  pending: 'รอยืนยัน / รอชำระเงิน',
-  confirmed: 'ยืนยันและชำระแล้ว',
+  pending: 'รอยืนยัน',
+  confirmed: 'ยืนยันแล้ว',
   cancelled: 'ผู้เดินทางยกเลิก',
   rejected: 'ผู้ให้บริการยกเลิก',
   completed: 'เดินทางเสร็จแล้ว',

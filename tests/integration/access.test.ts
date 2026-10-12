@@ -42,3 +42,20 @@ test('even super admin cannot apply food delivery configuration to crafts', () =
   assert.equal(canConfigureDelivery(a, store), true);
   assert.equal(canConfigureDelivery(a, { ...store, category: 'craft' }), false);
 });
+
+import { sandboxPaymentsEnabled, ownsPayment } from '../../apps/api/src/payment-policy.ts';
+test('sandbox payments fail closed outside explicitly opted-in development/test', () => {
+  for (const NODE_ENV of [undefined, 'production', 'staging', 'preview']) {
+    assert.equal(sandboxPaymentsEnabled({ NODE_ENV, ENABLE_SANDBOX_PAYMENTS: 'true' }), false);
+  }
+  for (const NODE_ENV of ['development', 'test']) {
+    for (const ENABLE_SANDBOX_PAYMENTS of [undefined, 'false', '1', 'TRUE']) {
+      assert.equal(sandboxPaymentsEnabled({ NODE_ENV, ENABLE_SANDBOX_PAYMENTS }), false);
+    }
+    assert.equal(sandboxPaymentsEnabled({ NODE_ENV, ENABLE_SANDBOX_PAYMENTS: 'true' }), true);
+  }
+});
+test('payment ownership cannot be inferred from staff status', () => {
+  assert.equal(ownsPayment('customer-a', 'customer-a'), true);
+  assert.equal(ownsPayment('customer-b', 'customer-a'), false);
+});

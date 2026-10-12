@@ -7,6 +7,8 @@ export const metadata = {
   description: 'ออกไปพบถิ่นใหม่ ๆ เลือกกิจกรรมที่ชอบ จองรอบที่ใช่ แล้วไปสัมผัสเรื่องราวของชุมชนไทย',
 };
 
+export const dynamic = 'force-dynamic';
+
 async function getInitialTrips(): Promise<Trip[]> {
   try {
     const apiOrigin =
@@ -15,7 +17,7 @@ async function getInitialTrips(): Promise<Trip[]> {
       process.env.NEXT_PUBLIC_API_URL ??
       'http://127.0.0.1:4200';
     const res = await fetch(`${apiOrigin}/api/v1/trips`, {
-      next: { revalidate: 30 },
+      cache: 'no-store',
     });
     if (!res.ok) return [];
     return (await res.json()) as Trip[];
